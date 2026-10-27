@@ -60,6 +60,7 @@ export const styleSchema = z.object({
 });
 
 export const timelineSchema = z.object({
+  schemaVersion: z.number().int().positive().default(1),
   project: projectSchema,
   scenes: z.array(sceneSchema),
   music: musicSchema.optional(),
