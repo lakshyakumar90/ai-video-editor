@@ -8,6 +8,7 @@
   },
   "scripts": {
     "check-types": "tsc --noEmit",
+    "test": "vitest run",
     "lint": "prettier --check \"src/**/*.ts\""
   },
   "dependencies": {
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
     "prettier": "3.9.6",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "^5.0.5"
   }
 }

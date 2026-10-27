@@ -173,6 +173,9 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vitest:
+        specifier: ^5.0.5
+        version: 5.0.5(@types/node@26.4.1)(vite@8.3.5(@types/node@26.4.1)(esbuild@0.28.2)(tsx@4.23.15))
 
   packages/typescript-config: {}
 
