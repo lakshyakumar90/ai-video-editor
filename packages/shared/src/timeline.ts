@@ -14,12 +14,36 @@ export const projectSchema = z.object({
   resolution: resolutionSchema,
 });
 
+export const audioSchema = z.object({
+  path: z.string().min(1),
+  duration: z.number().positive(),
+});
+
+export const visualTypeSchema = z.enum(["image", "video", "color"]);
+
+export const trimSchema = z.object({
+  start: z.number().min(0).default(0),
+  end: z.number().min(0).optional(),
+});
+
+export const visualSchema = z.object({
+  type: visualTypeSchema,
+  source: z.string().min(1),
+  trim: trimSchema.optional(),
+});
+
+export const captionWordSchema = z.object({
+  word: z.string().min(1),
+  start: z.number().min(0),
+  end: z.number().min(0),
+});
+
 export const sceneSchema = z.object({
   id: z.string().min(1),
-  title: z.string().optional(),
-  duration: z.number().positive(),
-  text: z.string().optional(),
-  mediaUrl: z.string().url().optional(),
+  narration: z.string().optional(),
+  audio: audioSchema,
+  visual: visualSchema,
+  captions: z.array(captionWordSchema).default([]),
 });
 
 export const musicSchema = z.object({
@@ -45,6 +69,11 @@ export const timelineSchema = z.object({
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 export type Resolution = z.infer<typeof resolutionSchema>;
 export type Project = z.infer<typeof projectSchema>;
+export type Audio = z.infer<typeof audioSchema>;
+export type VisualType = z.infer<typeof visualTypeSchema>;
+export type Trim = z.infer<typeof trimSchema>;
+export type Visual = z.infer<typeof visualSchema>;
+export type CaptionWord = z.infer<typeof captionWordSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
 export type Music = z.infer<typeof musicSchema>;
 export type Style = z.infer<typeof styleSchema>;
