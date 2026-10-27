@@ -152,6 +152,22 @@ importers:
         specifier: 17.12.0
         version: 17.12.0
 
+  packages/shared:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/typescript-config: {}
 
   packages/ui:
