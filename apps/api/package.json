@@ -4,8 +4,12 @@
   "description": "",
   "main": "src/server.ts",
   "scripts": {
-    "check-types": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/server.ts",
+    "test": "vitest run",
+    "lint": "prettier --check \"src/**/*.ts\"",
+    "check-types": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -30,6 +34,7 @@
     "eslint": "10.9.1",
     "prettier": "3.9.6",
     "supertest": "^7.3.1",
+    "tsx": "^4.20.0",
     "typescript": "7.0.2",
     "vitest": "^5.0.5"
   }
