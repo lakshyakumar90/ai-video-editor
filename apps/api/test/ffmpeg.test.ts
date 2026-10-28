@@ -1,6 +1,34 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { runFfmpeg, runProcess } from "../src/services/ffmpeg.js";
+import { probeDuration, runFfmpeg, runProcess } from "../src/services/ffmpeg.js";
+
+const SAMPLES = path.resolve("../../tmp/samples");
+
+describe("probeDuration", () => {
+  it("reads the real sample clip's duration", async () => {
+    const seconds = await probeDuration(path.join(SAMPLES, "sample-clip.mp4"));
+    expect(seconds).toBeCloseTo(4, 1); // generated with d=4
+  });
+
+  it("reads the real sample audio's duration", async () => {
+    const seconds = await probeDuration(path.join(SAMPLES, "sample.mp3"));
+    // rounded to whole seconds when encoded, so allow the small tail
+    expect(seconds).toBeGreaterThan(2.9);
+    expect(seconds).toBeLessThan(3.2);
+  });
+
+  it("rejects on a missing file", async () => {
+    await expect(probeDuration(path.join(SAMPLES, "not-here.mp4"))).rejects.toThrowError(
+      /exited with (a non-zero|code)/,
+    );
+  });
+
+  it("rejects on a file with no container duration (plain image)", async () => {
+    await expect(
+      probeDuration(path.join(SAMPLES, "sample.png")),
+    ).rejects.toThrowError(/invalid duration|no duration/i);
+  });
+});
 
 describe("runProcess", () => {
   it("resolves with captured stdout on exit 0", async () => {
