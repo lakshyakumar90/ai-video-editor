@@ -17,6 +17,22 @@ const envSchema = z.object({
   // Local Whisper.cpp
   WHISPER_CPP_PATH: z.string().min(1),
   WHISPER_MODEL_PATH: z.string().min(1),
+
+  // OpenCode local LLM server
+  OPENCODE_BASE_URL: z.string().url(),
+  OPENCODE_SERVER_PASSWORD: z.string().min(1),
+  OPENCODE_MODEL_PREFERENCE: z
+    .string()
+    .min(1)
+    .refine(
+      (value) =>
+        value
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .every((entry) => /^[^/]+\/.+/.test(entry)),
+      "OPENCODE_MODEL_PREFERENCE entries must look like provider/model",
+    ),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -32,3 +48,13 @@ if (!result.success) {
 }
 
 export const env = result.data;
+
+/** Preferred OpenCode models in priority order, parsed from `provider/model` entries. */
+export const openCodePreferredModels = env.OPENCODE_MODEL_PREFERENCE.split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean)
+  .map((entry) => {
+    const [providerID, ...rest] = entry.split("/");
+    return { providerID: providerID ?? "", modelID: rest.join("/") };
+  })
+  .filter((model) => model.modelID.length > 0);
