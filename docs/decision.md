@@ -531,3 +531,78 @@ as a second mandatory engine.
 This is the initial implementation decision. Revisit model selection
 only after measuring quality, latency, memory usage, and licensing on
 the target machine.
+
+------------------------------------------------------------------------
+
+## Appendix: OpenCode terms check (checked 2026-10-28)
+
+Result of reviewing **https://opencode.ai/legal/terms-of-service**
+(OpenCode / Anomaly Innovations, Inc., effective 2026-08-15), the model
+docs (**https://opencode.ai/v2/docs/console/models/**) and the free-model
+notes, against the intended use: the API backend drives a local OpenCode
+server (HTTP + SDK, `opencode serve`) as its swappable `LlmProvider`,
+sending prompts to the free ("opencode" provider) models and parsing the
+JSON output.
+
+### Compliant for the current use
+
+-   Access path is sanctioned: "Free-tier chat models require OpenCode;
+    use paid models or Go from other clients." We consume free models
+    *through OpenCode itself* (its own server + first-party client SDK),
+    not by calling upstream models from another client - exactly the
+    supported pattern.
+-   Output ownership: "you ... own the Output", assigned to us by the
+    Terms; generated scene scripts are ours to use.
+-   Paid terms do not apply: free models carry no charge today. The
+    Terms promise notice before any free service becomes paid.
+-   We use a single account/password (no multi-account limit evasion,
+    no bulk "data extraction", no scraping of web pages, no use of
+    Output to train competing models, no representing Output as
+    human-written in third-party contexts).
+
+### Constraints and cautions to respect
+
+1.  **"Internal use only" clause** - "You will only use the Services for
+    your own internal use, and not on behalf of ... any third party."
+    Using the free tier inside this project is fine for development and
+    self-use; **exposing OpenCode free models as a hosted backend for
+    external users later would need the paid/OpenCode Go route or direct
+    provider APIs**, not the free tier.
+2.  **Programmatic-output clause** - restriction 5 prohibits
+    "automatically or programmatically extract[s] data or Output".
+    Consulted practical reading: the OpenCode server/API/SDK endpoints
+    are the product's own interface for programmatic interaction, and
+    the models docs explicitly route free-tier access through OpenCode;
+    the clause targets bulk extraction/scraping of data from the
+    Services bypassing OpenCode. Avoid bulk scripted harvesting; keep
+    one-session-one-request, bounded load (as implemented).
+3.  **Free models are time-limited and may collect feedback** - most
+    free models are "free on OpenCode for a limited time" while the team
+    "collect[s] feedback", i.e. prompts/completions from unpaid accounts
+    may be used to improve services/models. Do not send personal data,
+    secrets, or third-party copyrighted text in prompts on the free
+    tier; keep prompts to synthetic scene briefs.
+4.  **Per-model data policies differ** - GLM-5.3-Flash Free and
+    DeepSeek V4.1 Flash Free: zero-retention, no training on data.
+    Flint 40B Free, MiMo, Nemotron lineup, Big Pickle (stealth model):
+    feedback/improvement use. Beam Free: no training, 30-day safety
+    retention, and a country exclusion list (not available in CN/RU/KP
+    etc.). Keep the preference order configurable
+    (`OPENCODE_MODEL_PREFERENCE`) so any model can be deprioritized or
+    removed without code changes.
+5.  **No availability guarantee** - free models rotate and can suspend
+    or discontinue "any part of the Services"; the provider fallback
+    chain and the typed `RateLimitError` are the mitigations.
+6.  **Arbitration/US-legal framework** - standard ToS from a US company;
+    noted, not an obstacle for internal development.
+
+### Practical takeaways for this repo
+
+-   Keep the free tier for local/self-use development and internal
+    generation as planned in the Phase-3 checklist.
+-   Never put user PII, credentials, or sensitive prompt content on the
+    free tier (it may be used for service improvement).
+-   If the feature ships to external users, revisit this section: the
+    compliant option is OpenCode Go (subscription with included usage)
+    or paid models/direct provider APIs behind the same
+    `LlmProvider` interface.
