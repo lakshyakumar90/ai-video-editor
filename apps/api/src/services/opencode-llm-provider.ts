@@ -88,6 +88,13 @@ export function formatValidationIssues(error: z.ZodError): string {
     .join("; ");
 }
 
+/** Short one-line rendering of any failure for the aggregate error message. */
+function summarizeError(error: unknown): string {
+  const text =
+    error instanceof Error ? error.message : "unknown failure";
+  return text.length > 160 ? `${text.slice(0, 160)}…` : text;
+}
+
 /**
  * Appends the validation error from the previous attempt to the original
  * prompt, so the model sees exactly which rules its reply violated.
@@ -102,6 +109,39 @@ export function buildRepairPrompt(prompt: string, schema: ZodType, error: z.ZodE
     "",
     `[Validation Error] ${formatValidationIssues(error)}`,
   ].join("\n");
+}
+
+/** HTTP statuses the SDK surfaces on `cause.status` for throttled/over-quota calls. */
+const RATE_LIMIT_STATUSES = [429, 402];
+/** Words the server / upstream providers use for throttling and quota exhaustion. */
+const RATE_LIMIT_PATTERN =
+  /\brate.?limit\b|too many requests|quota|resource.?exhausted|exceeded your|usage cap|insufficient (?:credits|balance)|\b429\b|\b402\b/i;
+
+/**
+ * Detects rate-limit and quota errors from the OpenCode server or its
+ * upstream providers — either as a raw HTTP status (429/402 surfaced by
+ * the client as `ClientError` with `cause: { status }`) or in the error
+ * body / message text of tagged errors like `ProviderRequestError`.
+ */
+export function isRateLimitError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const texts: Array<string | number> = [error.message, error.name];
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    texts.push(cause.message, cause.name);
+  } else if (typeof cause === "object" && cause !== null) {
+    const status = (cause as { status?: unknown }).status;
+    if (typeof status === "number") texts.push(status);
+    const message = (cause as { message?: unknown }).message;
+    if (typeof message === "string") texts.push(message);
+  }
+
+  return texts.some((text) =>
+    typeof text === "number"
+      ? RATE_LIMIT_STATUSES.includes(text)
+      : RATE_LIMIT_PATTERN.test(text),
+  );
 }
 
 export class OpenCodeProvider implements LlmProvider {
@@ -129,33 +169,39 @@ export class OpenCodeProvider implements LlmProvider {
     }
 
     let lastError: unknown;
+    const failures: string[] = [];
     for (const model of this.models) {
       let text = buildPromptText(prompt, schema);
 
-      // One validation-repair round: an invalid *shape* (ZodError) gets a
-      // second attempt with the failure appended to the prompt. Unparseable
-      // replies and transport errors go straight to the next model.
-      for (let attempt = 0; attempt <= VALIDATION_RETRIES; attempt++) {
+      // One validation-repair round per model. A rate-limit/quota failure
+      // is never repaired — that model's capacity is gone for now, so we
+      // fall through to the next free model immediately.
+      for (let attempt = 0; ; attempt++) {
         try {
           const value = await this.runSession(text, model);
           return schema.parse(value);
         } catch (error) {
-          if (
-            error instanceof z.ZodError &&
-            attempt < VALIDATION_RETRIES
-          ) {
+          lastError = error;
+
+          if (error instanceof z.ZodError && attempt < VALIDATION_RETRIES) {
             text = buildRepairPrompt(prompt, schema, error);
-            lastError = error;
             continue;
           }
-          lastError = error;
+
+          failures.push(
+            `${model.providerID}/${model.modelID}: ${
+              isRateLimitError(error)
+                ? "rate limit or quota exhausted"
+                : summarizeError(error)
+            }`,
+          );
           break;
         }
       }
     }
 
     throw new OpenCodeProviderError(
-      `all ${this.models.length} model(s) failed to return valid JSON`,
+      `all ${this.models.length} model(s) failed - ${failures.join(" | ")}`,
       lastError,
     );
   }

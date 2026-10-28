@@ -7,6 +7,7 @@ import {
   OpenCodeProviderError,
   SYSTEM_INSTRUCTIONS,
   buildPromptText,
+  isRateLimitError,
   parseJsonReply,
 } from "../src/services/opencode-llm-provider.js";
 
@@ -26,7 +27,8 @@ interface RecordedCall {
 interface ScriptedSessions {
   /** Assistant reply text per created session, in creation order. */
   replies: string[];
-  /** Statements like "session must be removed" are implicit: all sessions get removed. */
+  /** HTTP status for the Nth session's create call; null → normal 200. */
+  createStatuses?: Array<number | null>;
 }
 
 function makeMockFetch(script: ScriptedSessions) {
@@ -47,7 +49,13 @@ function makeMockFetch(script: ScriptedSessions) {
     calls.push({ method, path: url.pathname, body, auth });
 
     if (method === "POST" && url.pathname === "/api/session") {
+      const failStatus = script.createStatuses?.[sessionCount] ?? null;
       sessionCount++;
+      if (failStatus !== null) {
+        return response(failStatus, {
+          message: "rate limit exceeded, retry later",
+        });
+      }
       return response(200, { data: { id: `ses_${sessionCount}` } });
     }
     if (method === "POST" && url.pathname.endsWith("/prompt")) {
@@ -209,6 +217,55 @@ describe("OpenCodeProvider", () => {
     ]);
   });
 
+  it("falls through to the next model when the first is rate-limited (429)", async () => {
+    const { calls, fetchMock } = makeMockFetch({
+      // first session dies at create (429), so its reply slot stays empty
+      replies: ["", THREE_SCENE_JSON],
+      createStatuses: [429, null],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      models: [
+        { providerID: "opencode", modelID: "throttled-free" },
+        { providerID: "opencode", modelID: "backup-free" },
+      ],
+      fetch: fetchMock,
+    });
+
+    const script = await provider.generateJson("prompt", scenePlansSchema);
+    expect(script).toHaveLength(3);
+    expect(calls[0]?.body).toMatchObject({ model: { id: "throttled-free" } });
+    expect(calls[1]?.body).toMatchObject({ model: { id: "backup-free" } });
+    // rate limit ⇒ no repair round for the first model: exactly 2 sessions
+    expect(calls.filter((call) => call.method === "POST" && call.path === "/api/session"))
+      .toHaveLength(2);
+    const removed = calls
+      .filter((call) => call.method === "DELETE")
+      .map((call) => call.path);
+    expect(removed).toEqual(["/api/session/ses_2"]);
+  });
+
+  it("reports per-model failure reasons when every model fails", async () => {
+    const { fetchMock } = makeMockFetch({
+      replies: ["nope"],
+      createStatuses: [429, 429],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      models: [
+        { providerID: "opencode", modelID: "throttled-free" },
+        { providerID: "opencode", modelID: "also-throttled-free" },
+      ],
+      fetch: fetchMock,
+    });
+
+    await expect(
+      provider.generateJson("prompt", scenePlansSchema),
+    ).rejects.toThrowError(
+      /rate limit or quota exhausted.*also-throttled-free/s,
+    );
+  });
+
   it("rejects with OpenCodeProviderError when every model fails", async () => {
     const { fetchMock } = makeMockFetch({ replies: ["nope", "also nope"] });
     const provider = new OpenCodeProvider({
@@ -267,6 +324,48 @@ describe("buildPromptText", () => {
     const unrepresentable = z.string().transform((value) => value.length);
     const prompt = buildPromptText("count words", unrepresentable);
     expect(prompt).toContain("[JSON Schema] (described in the request)");
+  });
+});
+
+describe("isRateLimitError", () => {
+  const unexpectedStatus = (status: number) =>
+    Object.assign(new Error(`UnexpectedStatus: ${status}`), {
+      cause: { status },
+    });
+
+  const declaredTag = (tag: string, message: string) =>
+    Object.assign(new Error(message), { name: tag });
+
+  it("recognizes 429/402 statuses from ClientError causes", () => {
+    expect(isRateLimitError(unexpectedStatus(429))).toBe(true);
+    expect(isRateLimitError(unexpectedStatus(402))).toBe(true);
+  });
+
+  it("reads status and message out of nested error causes", () => {
+    const nested = new Error("wrapped", {
+      cause: unexpectedStatus(429),
+    });
+    expect(isRateLimitError(nested)).toBe(true);
+  });
+
+  it("recognizes quota wording in tagged provider errors", () => {
+    expect(
+      isRateLimitError(
+        declaredTag("ProviderRequestError", "You have exceeded your daily quota for this model"),
+      ),
+    ).toBe(true);
+    expect(
+      isRateLimitError(declaredTag("ProviderRequestError", "Too many requests")),
+    ).toBe(true);
+  });
+
+  it("rejects unrelated errors", () => {
+    const schemaError = scenePlansSchema.safeParse([{ mood: 1 }]).error;
+    expect(isRateLimitError(schemaError)).toBe(false);
+    expect(isRateLimitError(new Error("connection reset"))).toBe(false);
+    expect(isRateLimitError(unexpectedStatus(500))).toBe(false);
+    expect(isRateLimitError(unexpectedStatus(401))).toBe(false);
+    expect(isRateLimitError(null)).toBe(false);
   });
 });
 
