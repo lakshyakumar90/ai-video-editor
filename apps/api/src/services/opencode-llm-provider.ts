@@ -96,6 +96,24 @@ function summarizeError(error: unknown): string {
 }
 
 /**
+ * Thrown when **every** preferred model was rejected with a rate-limit or
+ * quota error. Extends {@link OpenCodeProviderError} so legacy
+ * `instanceof` checks still match; the UI distinguishes it by this class
+ * (or `error.name === "RateLimitError"`) to show a capacity message
+ * instead of a generic failure, using {@link RateLimitError.limitedModels}.
+ */
+export class RateLimitError extends OpenCodeProviderError {
+  /** Models that were throttled, as `provider/model` refs in preference order. */
+  readonly limitedModels: string[];
+
+  constructor(message: string, limitedModels: string[], cause?: unknown) {
+    super(message, cause);
+    this.name = "RateLimitError";
+    this.limitedModels = limitedModels;
+  }
+}
+
+/**
  * Appends the validation error from the previous attempt to the original
  * prompt, so the model sees exactly which rules its reply violated.
  */
@@ -169,7 +187,7 @@ export class OpenCodeProvider implements LlmProvider {
     }
 
     let lastError: unknown;
-    const failures: string[] = [];
+    const failures: Array<{ model: ModelRef; rateLimited: boolean; summary: string }> = [];
     for (const model of this.models) {
       let text = buildPromptText(prompt, schema);
 
@@ -188,20 +206,36 @@ export class OpenCodeProvider implements LlmProvider {
             continue;
           }
 
-          failures.push(
-            `${model.providerID}/${model.modelID}: ${
-              isRateLimitError(error)
-                ? "rate limit or quota exhausted"
-                : summarizeError(error)
-            }`,
-          );
+          failures.push({
+            model,
+            rateLimited: isRateLimitError(error),
+            summary: summarizeError(error),
+          });
           break;
         }
       }
     }
 
+    const failureText = failures
+      .map(
+        (f) =>
+          `${f.model.providerID}/${f.model.modelID}: ${
+            f.rateLimited ? "rate limit or quota exhausted" : f.summary
+          }`,
+      )
+      .join(" | ");
+
+    // Every model throttled ⇒ typed error the UI can explain to the user.
+    if (failures.length > 0 && failures.every((f) => f.rateLimited)) {
+      throw new RateLimitError(
+        `all ${failures.length} model(s) are rate-limited or over quota - ${failureText}`,
+        failures.map((f) => `${f.model.providerID}/${f.model.modelID}`),
+        lastError,
+      );
+    }
+
     throw new OpenCodeProviderError(
-      `all ${this.models.length} model(s) failed - ${failures.join(" | ")}`,
+      `all ${this.models.length} model(s) failed - ${failureText}`,
       lastError,
     );
   }

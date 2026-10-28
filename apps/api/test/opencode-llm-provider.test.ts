@@ -5,6 +5,7 @@ import {
   DEFAULT_OPENCODE_MODEL,
   OpenCodeProvider,
   OpenCodeProviderError,
+  RateLimitError,
   SYSTEM_INSTRUCTIONS,
   buildPromptText,
   isRateLimitError,
@@ -245,25 +246,64 @@ describe("OpenCodeProvider", () => {
     expect(removed).toEqual(["/api/session/ses_2"]);
   });
 
-  it("reports per-model failure reasons when every model fails", async () => {
+  it("throws a typed RateLimitError when every model is throttled", async () => {
     const { fetchMock } = makeMockFetch({
-      replies: ["nope"],
-      createStatuses: [429, 429],
+      replies: ["", ""],
+      createStatuses: [429, 402],
     });
     const provider = new OpenCodeProvider({
       ...providerOptions,
       models: [
         { providerID: "opencode", modelID: "throttled-free" },
-        { providerID: "opencode", modelID: "also-throttled-free" },
+        { providerID: "opencode", modelID: "over-quota-free" },
       ],
       fetch: fetchMock,
     });
 
-    await expect(
-      provider.generateJson("prompt", scenePlansSchema),
-    ).rejects.toThrowError(
-      /rate limit or quota exhausted.*also-throttled-free/s,
+    let caught: unknown;
+    try {
+      await provider.generateJson("prompt", scenePlansSchema);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(RateLimitError);
+    expect(caught).toBeInstanceOf(OpenCodeProviderError);
+    const rateLimitError = caught as RateLimitError;
+    expect(rateLimitError.name).toBe("RateLimitError");
+    expect(rateLimitError.limitedModels).toEqual([
+      "opencode/throttled-free",
+      "opencode/over-quota-free",
+    ]);
+    expect(rateLimitError.message).toMatch(
+      /rate-limited or over quota.*throttled-free.*over-quota-free/s,
     );
+  });
+
+  it("throws the generic error (not RateLimitError) on mixed failures", async () => {
+    const { fetchMock } = makeMockFetch({
+      // first model is throttled, second returns unparseable garbage
+      replies: ["", "nope"],
+      createStatuses: [429, null],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      models: [
+        { providerID: "opencode", modelID: "throttled-free" },
+        { providerID: "opencode", modelID: "broken-free" },
+      ],
+      fetch: fetchMock,
+    });
+
+    let caught: unknown;
+    try {
+      await provider.generateJson("prompt", scenePlansSchema);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(OpenCodeProviderError);
+    expect(caught).not.toBeInstanceOf(RateLimitError);
   });
 
   it("rejects with OpenCodeProviderError when every model fails", async () => {
