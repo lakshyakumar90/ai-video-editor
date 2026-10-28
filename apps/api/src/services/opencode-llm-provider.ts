@@ -132,7 +132,12 @@ export const SYSTEM_INSTRUCTIONS =
   "1) Respond with exactly one JSON value and nothing else - no markdown, " +
   "no code fences, no commentary, no labels. 2) If a JSON Schema is provided " +
   "below, the JSON value MUST conform to that schema. 3) Do not wrap the " +
-  "JSON in quotes, resources, or explanations.";
+  "JSON in quotes, resources, or explanations. 4) Any narration text must " +
+  "be paced for real-time playback: about 2.5 words per second of the " +
+  "scene's stated runtime (e.g. about 20 words for an 8-second scene; aim " +
+  "for 18-24 and never fewer than 16). If the request does not state a " +
+  "runtime, write full, flowing sentences of about 25 words per scene " +
+  "rather than short captions.";
 
 export const DEFAULT_OPENCODE_MODEL: ModelRef = {
   providerID: "opencode",
