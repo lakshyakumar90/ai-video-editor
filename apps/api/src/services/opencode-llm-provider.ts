@@ -75,6 +75,35 @@ export function buildPromptText(prompt: string, schema: ZodType): string {
  * the assistant reply is extracted as text, parsed as JSON, and validated
  * against the caller's schema. Sessions are always removed afterwards.
  */
+/** Extra repair rounds allowed per model when validation fails. */
+const VALIDATION_RETRIES = 1;
+
+/** Formats a `ZodError` into a short issue list to append to a repair prompt. */
+export function formatValidationIssues(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
+/**
+ * Appends the validation error from the previous attempt to the original
+ * prompt, so the model sees exactly which rules its reply violated.
+ */
+export function buildRepairPrompt(prompt: string, schema: ZodType, error: z.ZodError): string {
+  return [
+    buildPromptText(prompt, schema),
+    "",
+    "[Validation Failure]",
+    "Your previous reply did not satisfy the JSON Schema above.",
+    "Produce one corrected JSON value conforming to the schema and nothing else.",
+    "",
+    `[Validation Error] ${formatValidationIssues(error)}`,
+  ].join("\n");
+}
+
 export class OpenCodeProvider implements LlmProvider {
   private readonly client: OpenCodeClient;
   private readonly models: ModelRef[];
@@ -101,11 +130,27 @@ export class OpenCodeProvider implements LlmProvider {
 
     let lastError: unknown;
     for (const model of this.models) {
-      try {
-        const value = await this.runSession(prompt, schema, model);
-        return schema.parse(value);
-      } catch (error) {
-        lastError = error;
+      let text = buildPromptText(prompt, schema);
+
+      // One validation-repair round: an invalid *shape* (ZodError) gets a
+      // second attempt with the failure appended to the prompt. Unparseable
+      // replies and transport errors go straight to the next model.
+      for (let attempt = 0; attempt <= VALIDATION_RETRIES; attempt++) {
+        try {
+          const value = await this.runSession(text, model);
+          return schema.parse(value);
+        } catch (error) {
+          if (
+            error instanceof z.ZodError &&
+            attempt < VALIDATION_RETRIES
+          ) {
+            text = buildRepairPrompt(prompt, schema, error);
+            lastError = error;
+            continue;
+          }
+          lastError = error;
+          break;
+        }
       }
     }
 
@@ -117,8 +162,7 @@ export class OpenCodeProvider implements LlmProvider {
 
   /** One create → prompt → wait → read cycle against a single model. */
   private async runSession(
-    prompt: string,
-    schema: ZodType,
+    text: string,
     model: ModelRef,
   ): Promise<unknown> {
     const session = await this.client.session.create({
@@ -128,8 +172,6 @@ export class OpenCodeProvider implements LlmProvider {
     });
 
     try {
-      const text = buildPromptText(prompt, schema);
-
       await this.client.session.prompt({ sessionID: session.id, text });
       await this.client.session.wait(
         { sessionID: session.id },

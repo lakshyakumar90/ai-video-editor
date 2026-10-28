@@ -135,6 +135,51 @@ describe("OpenCodeProvider", () => {
     expect(removed).toEqual(["/api/session/ses_1"]);
   });
 
+  it("retries once with the validation error appended when the reply fails the schema", async () => {
+    // Valid JSON, but `mood` violates min(1): a ZodError, not a parse error.
+    const invalidShape = JSON.stringify([
+      { narration: "a", visualQuery: "b", mood: "" },
+    ]);
+    const { calls, fetchMock } = makeMockFetch({
+      replies: [invalidShape, THREE_SCENE_JSON],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      models: [{ providerID: "opencode", modelID: "only-free" }],
+      fetch: fetchMock,
+    });
+
+    const script = await provider.generateJson("prompt", scenePlansSchema);
+    expect(script).toHaveLength(3);
+
+    // second session's prompt carries the failure report
+    const repairPrompt = (calls[6]?.body as { text: string }).text;
+    expect(repairPrompt).toContain("[Validation Failure]");
+    expect(repairPrompt).toContain("mood"); // issue path from the error
+    expect(calls.filter((call) => call.method === "DELETE").map((c) => c.path))
+      .toEqual(["/api/session/ses_1", "/api/session/ses_2"]);
+  });
+
+  it("gives up after the single repair round when the shape stays invalid", async () => {
+    const invalidShape = (mood: string) =>
+      JSON.stringify([{ narration: "a", visualQuery: "b", mood }]);
+    const { calls, fetchMock } = makeMockFetch({
+      replies: [invalidShape(""), invalidShape("")],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      models: [{ providerID: "opencode", modelID: "only-free" }],
+      fetch: fetchMock,
+    });
+
+    await expect(
+      provider.generateJson("prompt", scenePlansSchema),
+    ).rejects.toThrowError(OpenCodeProviderError);
+    // exactly two attempts: original + one repair, no model fallback bounce
+    expect(calls.filter((call) => call.method === "POST" && call.path === "/api/session"))
+      .toHaveLength(2);
+  });
+
   it("falls back to the next preferred model when one returns garbage", async () => {
     const { calls, fetchMock } = makeMockFetch({
       replies: ["that is not json at all", THREE_SCENE_JSON],
@@ -150,6 +195,9 @@ describe("OpenCodeProvider", () => {
 
     const script = await provider.generateJson("prompt", scenePlansSchema);
     expect(script).toHaveLength(3);
+    // garbage is a parse error, not a validation error — no repair round
+    expect(calls.filter((call) => call.method === "POST" && call.path === "/api/session"))
+      .toHaveLength(2);
     expect(calls[0]?.body).toMatchObject({ model: { id: "first-free" } });
     expect(calls[5]?.body).toMatchObject({ model: { id: "second-free" } });
     const removed = calls
