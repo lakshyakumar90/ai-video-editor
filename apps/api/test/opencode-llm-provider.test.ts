@@ -9,7 +9,9 @@ import {
   SYSTEM_INSTRUCTIONS,
   buildPromptText,
   isRateLimitError,
+  isTransientError,
   parseJsonReply,
+  withRetry,
 } from "../src/services/opencode-llm-provider.js";
 
 const THREE_SCENE_JSON = JSON.stringify([
@@ -50,7 +52,13 @@ function makeMockFetch(script: ScriptedSessions) {
     calls.push({ method, path: url.pathname, body, auth });
 
     if (method === "POST" && url.pathname === "/api/session") {
-      const failStatus = script.createStatuses?.[sessionCount] ?? null;
+      // Missing entries repeat the last one, so a short list can throttle
+      // every attempt of a call.
+      const statuses = script.createStatuses;
+      const failStatus =
+        statuses === undefined
+          ? null
+          : (statuses[Math.min(sessionCount, statuses.length - 1)] ?? null);
       sessionCount++;
       if (failStatus !== null) {
         return response(failStatus, {
@@ -99,6 +107,8 @@ const providerOptions = {
   baseUrl: "http://test:4096",
   password: "dev-password",
   directory: "C:\\proj",
+  // keeps simulated transient-failure backoffs instantaneous in tests
+  retryBaseDelayMs: 1,
 } as const;
 
 describe("OpenCodeProvider", () => {
@@ -218,11 +228,35 @@ describe("OpenCodeProvider", () => {
     ]);
   });
 
-  it("falls through to the next model when the first is rate-limited (429)", async () => {
+  it("recovers from a transient 500 on session.create without burning a model", async () => {
     const { calls, fetchMock } = makeMockFetch({
-      // first session dies at create (429), so its reply slot stays empty
+      // first create attempt fails with 500, second succeeds
       replies: ["", THREE_SCENE_JSON],
-      createStatuses: [429, null],
+      createStatuses: [500, null],
+    });
+    const provider = new OpenCodeProvider({
+      ...providerOptions,
+      fetch: fetchMock,
+    });
+
+    const script = await provider.generateJson("prompt", scenePlansSchema);
+    expect(script).toHaveLength(3);
+    // two create attempts, one logical session (ses_2), removed once
+    expect(calls[0]?.body).toMatchObject({ model: { id: DEFAULT_OPENCODE_MODEL.modelID } });
+    expect(
+      calls.filter(
+        (call) => call.method === "POST" && call.path === "/api/session",
+      ),
+    ).toHaveLength(2);
+    expect(calls.filter((call) => call.method === "DELETE").map((c) => c.path))
+      .toEqual(["/api/session/ses_2"]);
+  });
+
+  it("retries a throttled create with backoff before falling through to the next model", async () => {
+    // 429 for model 1's three call-level attempts, then model 2 succeeds
+    const { calls, fetchMock } = makeMockFetch({
+      replies: ["", "", "", THREE_SCENE_JSON],
+      createStatuses: [429, 429, 429, null],
     });
     const provider = new OpenCodeProvider({
       ...providerOptions,
@@ -236,14 +270,13 @@ describe("OpenCodeProvider", () => {
     const script = await provider.generateJson("prompt", scenePlansSchema);
     expect(script).toHaveLength(3);
     expect(calls[0]?.body).toMatchObject({ model: { id: "throttled-free" } });
-    expect(calls[1]?.body).toMatchObject({ model: { id: "backup-free" } });
-    // rate limit ⇒ no repair round for the first model: exactly 2 sessions
+    expect(calls[3]?.body).toMatchObject({ model: { id: "backup-free" } });
+    // 3 retry attempts on model 1 + 1 on model 2 = 4 create calls
     expect(calls.filter((call) => call.method === "POST" && call.path === "/api/session"))
-      .toHaveLength(2);
-    const removed = calls
-      .filter((call) => call.method === "DELETE")
-      .map((call) => call.path);
-    expect(removed).toEqual(["/api/session/ses_2"]);
+      .toHaveLength(4);
+    // only model 2's session ever existed, so only it is removed
+    expect(calls.filter((call) => call.method === "DELETE").map((c) => c.path))
+      .toEqual(["/api/session/ses_4"]);
   });
 
   it("throws a typed RateLimitError when every model is throttled", async () => {
@@ -364,6 +397,121 @@ describe("buildPromptText", () => {
     const unrepresentable = z.string().transform((value) => value.length);
     const prompt = buildPromptText("count words", unrepresentable);
     expect(prompt).toContain("[JSON Schema] (described in the request)");
+  });
+});
+
+describe("withRetry / withTimeout / isTransientError", () => {
+  const transportError = () =>
+    Object.assign(new Error("Transport: network unreachable"), {
+      name: "ClientError",
+    });
+  const serverError = (status: number) =>
+    Object.assign(new Error(`UnexpectedStatus: ${status}`), {
+      cause: { status },
+    });
+
+  it("retries transient errors with exponential backoff, then succeeds", async () => {
+    let calls = 0;
+    const result = await withRetry(
+      (attempt) => {
+        calls++;
+        if (attempt < 2) return Promise.reject(transportError());
+        return Promise.resolve(`ok-${attempt}`);
+      },
+      { attempts: 3, baseDelayMs: 10 },
+    );
+
+    expect(result).toBe("ok-2");
+    expect(calls).toBe(3);
+  });
+
+  it("does not retry non-transient errors", async () => {
+    let calls = 0;
+    await expect(
+      withRetry(
+        () => {
+          calls++;
+          return Promise.reject(new Error("session invalid"));
+        },
+        { attempts: 3, baseDelayMs: 1 },
+      ),
+    ).rejects.toThrowError(/session invalid/);
+    expect(calls).toBe(1);
+  });
+
+  it("exhausts attempts on persistent transient errors", async () => {
+    let calls = 0;
+    let caught: unknown;
+    try {
+      await withRetry(
+        () => {
+          calls++;
+          return Promise.reject(serverError(502));
+        },
+        { attempts: 3, baseDelayMs: 1 },
+      );
+    } catch (error) {
+      caught = error;
+    }
+    expect(calls).toBe(3);
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toContain("502");
+  });
+
+  it("passes the attempt number to the operation", async () => {
+    const seen: number[] = [];
+    await withRetry(
+      (attempt) => {
+        seen.push(attempt);
+        if (attempt < 2) return Promise.reject(transportError());
+        return Promise.resolve(null);
+      },
+      { attempts: 3, baseDelayMs: 1 },
+    );
+    expect(seen).toEqual([0, 1, 2]);
+  });
+
+  it("times out a hanging attempt and retries", async () => {
+    let calls = 0;
+    const result = await withRetry(
+      () => {
+        calls++;
+        return calls === 1
+          ? new Promise<string>(() => undefined) // hangs forever
+          : Promise.resolve("recovered");
+      },
+      { attempts: 2, timeoutMs: 20, baseDelayMs: 1 },
+    );
+    expect(result).toBe("recovered");
+    expect(calls).toBe(2);
+  });
+
+  it("surfaces the TimeoutError when every attempt times out", async () => {
+    await expect(
+      withRetry(() => new Promise<string>(() => undefined), {
+        attempts: 1,
+        timeoutMs: 10,
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("classifies failures", () => {
+    expect(isTransientError(transportError())).toBe(true);
+    expect(isTransientError(serverError(503))).toBe(true);
+    expect(isTransientError(serverError(408))).toBe(true);
+    expect(
+      isTransientError(
+        Object.assign(new Error("rate limit exceeded"), {
+          name: "ProviderRequestError",
+        }),
+      ),
+    ).toBe(true);
+    expect(isTransientError(new DOMException("t", "TimeoutError"))).toBe(true);
+
+    expect(isTransientError(new Error("I politely refuse."))).toBe(false);
+    expect(isTransientError(serverError(401))).toBe(false);
+    expect(isTransientError(serverError(404))).toBe(false);
+    expect(isTransientError(null)).toBe(false);
   });
 });
 

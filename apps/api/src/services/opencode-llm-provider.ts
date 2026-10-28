@@ -19,6 +19,12 @@ export interface OpenCodeProviderOptions {
   models?: ModelRef[];
   /** Budget for waiting on the agent loop per model attempt, in milliseconds. */
   timeoutMs?: number;
+  /** Total tries per individual SDK call (create/prompt/wait/list). Default 3. */
+  retries?: number;
+  /** Exponential backoff base between SDK-call retries, in milliseconds. Default 500. */
+  retryBaseDelayMs?: number;
+  /** Per-attempt timeout for each SDK call except `wait`. Default 30000ms. */
+  callTimeoutMs?: number;
   /** Injectable fetch for tests. */
   fetch?: typeof fetch;
 }
@@ -28,6 +34,96 @@ export class OpenCodeProviderError extends Error {
     super(message, { cause });
     this.name = "OpenCodeProviderError";
   }
+}
+
+export interface RetryOptions {
+  /** Total tries (not retries). 1 = run once, no retries. Default 3. */
+  attempts?: number;
+  /** Backoff after the 1st failure. Default 500ms, doubling per retry. */
+  baseDelayMs?: number;
+  /** Upper bound for a single backoff delay. Default 8000ms. */
+  maxDelayMs?: number;
+  /** Per-attempt timeout in milliseconds. 0 disables. Default 0. */
+  timeoutMs?: number;
+  /** Which errors are worth retrying. Default: {@link isTransientError}. */
+  shouldRetry?: (error: unknown) => boolean;
+}
+
+/** Rejects with `TimeoutError` if `promise` has not settled after `timeoutMs`. */
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  if (timeoutMs <= 0) return promise;
+
+  // The losing promise may reject after the race settles; silence it so it
+  // cannot surface as an unhandled rejection.
+  void promise.catch(() => undefined);
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new DOMException(`timed out after ${timeoutMs}ms`, "TimeoutError")),
+      timeoutMs,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Runs an async operation with a per-attempt timeout and exponential
+ * backoff between retries. A non-retryable error (per `shouldRetry`)
+ * or the exhaustion of `attempts` rejects with the last error.
+ */
+export async function withRetry<T>(
+  operation: (attempt: number) => Promise<T>,
+  options: RetryOptions = {},
+): Promise<T> {
+  const { attempts = 3, baseDelayMs = 500, maxDelayMs = 8_000, timeoutMs = 0 } =
+    options;
+  const shouldRetry = options.shouldRetry ?? isTransientError;
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const work = operation(attempt);
+      return await (timeoutMs > 0 ? withTimeout(work, timeoutMs) : work);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1 || !shouldRetry(error)) break;
+      await delay(Math.min(maxDelayMs, baseDelayMs * 2 ** attempt));
+    }
+  }
+  throw lastError;
+}
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Transient SDK/server/transport failures worth retrying with backoff. */
+export function isTransientError(error: unknown): boolean {
+  if (isRateLimitError(error)) return true;
+  if (!(error instanceof Error)) return false;
+  if (error.name === "TimeoutError" || error.name === "AbortError") return true;
+
+  // SDK ClientError("Transport", …) — network-level failure
+  if (error.name === "ClientError" && error.message.startsWith("Transport")) {
+    return true;
+  }
+
+  const status = extractStatus(error);
+  return status !== null && (status >= 500 || status === 408);
+}
+
+function extractStatus(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) return null;
+  const cause = (error as { cause?: unknown }).cause;
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    typeof (cause as { status?: unknown }).status === "number"
+  ) {
+    return (cause as { status: number }).status;
+  }
+  const match =
+    error instanceof Error ? /\bUnexpectedStatus:\s*(\d{3})\b/.exec(error.message) : null;
+  return match ? Number(match[1]) : null;
 }
 
 /** Prepended to every prompt: the model must emit a single bare JSON value. */
@@ -45,6 +141,12 @@ export const DEFAULT_OPENCODE_MODEL: ModelRef = {
 
 /** Timeout budget for waiting on the agent loop, per model attempt. */
 const DEFAULT_TIMEOUT_MS = 120_000;
+/** Default per-attempt timeout for a single SDK call. */
+const DEFAULT_CALL_TIMEOUT_MS = 30_000;
+/** Default total tries per SDK call. */
+const DEFAULT_RETRIES = 3;
+/** Default backoff base between SDK-call retries. */
+const DEFAULT_RETRY_BASE_MS = 500;
 
 /** Prompt sent to the model: system instructions, the JSON Schema, and the request. */
 export function buildPromptText(prompt: string, schema: ZodType): string {
@@ -167,6 +269,9 @@ export class OpenCodeProvider implements LlmProvider {
   private readonly models: ModelRef[];
   private readonly directory: string;
   private readonly timeoutMs: number;
+  private readonly retries: number;
+  private readonly retryBaseDelayMs: number;
+  private readonly callTimeoutMs: number;
 
   constructor(options: OpenCodeProviderOptions) {
     const auth =
@@ -179,6 +284,18 @@ export class OpenCodeProvider implements LlmProvider {
     this.models = options.models ?? [DEFAULT_OPENCODE_MODEL];
     this.directory = options.directory;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.retries = options.retries ?? DEFAULT_RETRIES;
+    this.retryBaseDelayMs = options.retryBaseDelayMs ?? DEFAULT_RETRY_BASE_MS;
+    this.callTimeoutMs = options.callTimeoutMs ?? DEFAULT_CALL_TIMEOUT_MS;
+  }
+
+  /** Runs one SDK call with timeout + bounded exponential-backoff retries. */
+  private call<T>(factory: () => Promise<T>): Promise<T> {
+    return withRetry(factory, {
+      attempts: this.retries,
+      baseDelayMs: this.retryBaseDelayMs,
+      timeoutMs: this.callTimeoutMs,
+    });
   }
 
   async generateJson<T>(prompt: string, schema: ZodType<T>): Promise<T> {
@@ -245,20 +362,33 @@ export class OpenCodeProvider implements LlmProvider {
     text: string,
     model: ModelRef,
   ): Promise<unknown> {
-    const session = await this.client.session.create({
-      title: "api: generateJson",
-      model: { providerID: model.providerID, id: model.modelID },
-      location: { directory: this.directory },
-    });
+    const session = await this.call(() =>
+      this.client.session.create({
+        title: "api: generateJson",
+        model: { providerID: model.providerID, id: model.modelID },
+        location: { directory: this.directory },
+      }),
+    );
 
     try {
-      await this.client.session.prompt({ sessionID: session.id, text });
-      await this.client.session.wait(
-        { sessionID: session.id },
-        { signal: AbortSignal.timeout(this.timeoutMs) },
+      await this.call(() => this.client.session.prompt({ sessionID: session.id, text }));
+      await withRetry(
+        () =>
+          this.client.session.wait(
+            { sessionID: session.id },
+            { signal: AbortSignal.timeout(this.timeoutMs) },
+          ),
+        {
+          attempts: this.retries,
+          baseDelayMs: this.retryBaseDelayMs,
+          // the wait call is inherently long; its own budget applies per attempt
+          timeoutMs: this.timeoutMs,
+        },
       );
 
-      const messages = await this.client.message.list({ sessionID: session.id });
+      const messages = await this.call(() =>
+        this.client.message.list({ sessionID: session.id }),
+      );
       const assistant = [...messages.data]
         .reverse()
         .find((message) => message.type === "assistant");
@@ -273,6 +403,7 @@ export class OpenCodeProvider implements LlmProvider {
 
       return parseJsonReply(reply);
     } finally {
+      // Best-effort cleanup; a failure here must never mask the result.
       await this.client.session
         .remove({ sessionID: session.id })
         .catch(() => undefined);
