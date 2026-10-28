@@ -1,5 +1,5 @@
 import { OpenCode, type OpenCodeClient } from "@opencode/client";
-import type { ZodType } from "zod";
+import { z, type ZodType } from "zod";
 import type { LlmProvider } from "./llm-provider.js";
 
 /** A model reference as used in session creation. */
@@ -34,9 +34,9 @@ export class OpenCodeProviderError extends Error {
 export const SYSTEM_INSTRUCTIONS =
   "You are a JSON generation service. Follow these rules exactly: " +
   "1) Respond with exactly one JSON value and nothing else - no markdown, " +
-  "no code fences, no commentary, no labels. 2) The JSON value must satisfy " +
-  "the shape requested by the user prompt. 3) Do not wrap strings in " +
-  "resources or explanations.";
+  "no code fences, no commentary, no labels. 2) If a JSON Schema is provided " +
+  "below, the JSON value MUST conform to that schema. 3) Do not wrap the " +
+  "JSON in quotes, resources, or explanations.";
 
 export const DEFAULT_OPENCODE_MODEL: ModelRef = {
   providerID: "opencode",
@@ -45,6 +45,27 @@ export const DEFAULT_OPENCODE_MODEL: ModelRef = {
 
 /** Timeout budget for waiting on the agent loop, per model attempt. */
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+/** Prompt sent to the model: system instructions, the JSON Schema, and the request. */
+export function buildPromptText(prompt: string, schema: ZodType): string {
+  let shape = "";
+  try {
+    shape = JSON.stringify(z.toJSONSchema(schema));
+  } catch {
+    // schemas with unrepresentable constructs (transforms, custom types)
+    // simply don't contribute a machine-readable shape
+  }
+
+  return [
+    "[Instructions]",
+    SYSTEM_INSTRUCTIONS,
+    "",
+    `[JSON Schema]${shape ? ` ${shape}` : " (described in the request)"}`,
+    "",
+    "[Request]",
+    prompt,
+  ].join("\n");
+}
 
 /**
  * `LlmProvider` backed by a local OpenCode server.
@@ -81,7 +102,7 @@ export class OpenCodeProvider implements LlmProvider {
     let lastError: unknown;
     for (const model of this.models) {
       try {
-        const value = await this.runSession(prompt, model);
+        const value = await this.runSession(prompt, schema, model);
         return schema.parse(value);
       } catch (error) {
         lastError = error;
@@ -95,7 +116,11 @@ export class OpenCodeProvider implements LlmProvider {
   }
 
   /** One create → prompt → wait → read cycle against a single model. */
-  private async runSession(prompt: string, model: ModelRef): Promise<unknown> {
+  private async runSession(
+    prompt: string,
+    schema: ZodType,
+    model: ModelRef,
+  ): Promise<unknown> {
     const session = await this.client.session.create({
       title: "api: generateJson",
       model: { providerID: model.providerID, id: model.modelID },
@@ -103,13 +128,7 @@ export class OpenCodeProvider implements LlmProvider {
     });
 
     try {
-      const text = [
-        "[Instructions]",
-        SYSTEM_INSTRUCTIONS,
-        "",
-        "[Request]",
-        prompt,
-      ].join("\n");
+      const text = buildPromptText(prompt, schema);
 
       await this.client.session.prompt({ sessionID: session.id, text });
       await this.client.session.wait(
@@ -139,31 +158,47 @@ export class OpenCodeProvider implements LlmProvider {
   }
 }
 
-/** Strips markdown fences and stray prose, then parses the JSON value. */
+/** Strips markdown fences (even embedded in prose) and stray prose, then parses. */
 export function parseJsonReply(text: string): unknown {
   let raw = text.trim();
 
-  const fenced = raw.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/i);
-  if (fenced?.[1]) {
+  // Strip the first fenced code block, wherever it sits in the reply.
+  const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/i);
+  if (fenced?.[1] && fenced[1].trim().length > 0) {
     raw = fenced[1].trim();
   }
 
+  const attempts: string[] = [raw];
   if (!raw.startsWith("{") && !raw.startsWith("[")) {
-    const start = Math.min(
-      ...[raw.indexOf("{"), raw.indexOf("[")].filter((index) => index !== -1),
-    );
-    const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
-    if (Number.isFinite(start) && end > start) {
-      raw = raw.slice(start, end + 1);
+    attempts.push(sliceToOuterBrackets(raw));
+  }
+
+  let lastError: unknown;
+  for (const candidate of attempts) {
+    try {
+      return JSON.parse(candidate);
+    } catch (error) {
+      lastError = error;
     }
   }
 
+  // Starts with a bracket but raw JSON.parse failed (e.g. trailing
+  // commentary after the closing bracket) — retry with bracket slicing.
   try {
-    return JSON.parse(raw);
+    return JSON.parse(sliceToOuterBrackets(raw));
   } catch (error) {
     throw new OpenCodeProviderError(
       `reply is not parseable JSON: ${text.slice(0, 200)}`,
-      error,
+      error ?? lastError,
     );
   }
+}
+
+/** Slices `raw` from the first `{`/`[` to the last `}`/`]`, if both exist. */
+function sliceToOuterBrackets(raw: string): string {
+  const start = Math.min(
+    ...[raw.indexOf("{"), raw.indexOf("[")].filter((index) => index !== -1),
+  );
+  const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
+  return Number.isFinite(start) && end > start ? raw.slice(start, end + 1) : raw;
 }

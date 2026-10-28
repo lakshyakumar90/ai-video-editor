@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { scenePlansSchema } from "@repo/shared";
 import {
   DEFAULT_OPENCODE_MODEL,
   OpenCodeProvider,
   OpenCodeProviderError,
   SYSTEM_INSTRUCTIONS,
+  buildPromptText,
   parseJsonReply,
 } from "../src/services/opencode-llm-provider.js";
 
@@ -119,7 +121,13 @@ describe("OpenCodeProvider", () => {
     const promptBody = calls[1]?.body as { text: string };
     expect(promptBody.text).toContain("[Instructions]");
     expect(promptBody.text).toContain(SYSTEM_INSTRUCTIONS);
+    expect(promptBody.text).toContain("[JSON Schema]");
+    expect(promptBody.text).toContain('"visualQuery"');
+    expect(promptBody.text).toContain('"properties"');
     expect(promptBody.text).toContain("write a 3-scene script");
+    expect(promptBody.text.indexOf("[Request]")).toBeLessThan(
+      promptBody.text.indexOf("write a 3-scene script"),
+    );
     // cleanup: every session is removed
     const removed = calls
       .filter((call) => call.method === "DELETE")
@@ -183,11 +191,64 @@ describe("OpenCodeProvider", () => {
   });
 });
 
+describe("buildPromptText", () => {
+  it("embeds the schema's JSON Schema between instructions and request", () => {
+    const prompt = buildPromptText("write the scene", scenePlansSchema);
+    const schemaLine = prompt
+      .split("\n")
+      .find((line) => line.startsWith("[JSON Schema]"));
+
+    expect(schemaLine).toBeDefined();
+    expect(schemaLine).toContain('"mood"');
+    const values = JSON.parse(schemaLine!.slice("[JSON Schema] ".length));
+    expect(values).toMatchObject({
+      type: "array",
+      items: { type: "object", properties: expect.anything() },
+    });
+
+    const sections = prompt.split("\n");
+    expect(sections.indexOf("[Instructions]")).toBeLessThan(
+      sections.findIndex((line) => line.startsWith("[JSON Schema]")),
+    );
+    expect(
+      sections.findIndex((line) => line.startsWith("[JSON Schema]")),
+    ).toBeLessThan(sections.indexOf("[Request]"));
+  });
+
+  it("falls back to a note when the schema cannot be converted", () => {
+    const unrepresentable = z.string().transform((value) => value.length);
+    const prompt = buildPromptText("count words", unrepresentable);
+    expect(prompt).toContain("[JSON Schema] (described in the request)");
+  });
+});
+
 describe("parseJsonReply", () => {
   it("parses bare, fenced, and prose-wrapped JSON", () => {
     expect(parseJsonReply('{"a":1}')).toEqual({ a: 1 });
     expect(parseJsonReply("```json\n{\"a\":2}\n```")).toEqual({ a: 2 });
     expect(parseJsonReply("Sure! Here you go: {\"a\":3}")).toEqual({ a: 3 });
+  });
+
+  it("handles fenced blocks surrounded by prose", () => {
+    expect(
+      parseJsonReply(
+        "Here is the script:\n\n```json\n" + THREE_SCENE_JSON + "\n```\n\nEnjoy!",
+      ),
+    ).toEqual(JSON.parse(THREE_SCENE_JSON));
+  });
+
+  it("handles fences around multi-line arrays", () => {
+    const fenced =
+      "```json\n" +
+      JSON.stringify(JSON.parse(THREE_SCENE_JSON), null, 2) +
+      "\n```";
+    expect(parseJsonReply(fenced)).toHaveLength(3);
+  });
+
+  it("parses pretty-printed JSON with trailing commentary", () => {
+    const reply = JSON.stringify(JSON.parse(THREE_SCENE_JSON), null, 2) +
+      "\n\nLet me know if you'd like changes!";
+    expect(parseJsonReply(reply)).toEqual(JSON.parse(THREE_SCENE_JSON));
   });
 
   it("throws a descriptive error for non-JSON replies", () => {
