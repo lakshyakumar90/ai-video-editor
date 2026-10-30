@@ -18,6 +18,11 @@ const envSchema = z.object({
   WHISPER_CPP_PATH: z.string().min(1),
   WHISPER_MODEL_PATH: z.string().min(1),
 
+  // Large-file uploads (raw footage, audio): streamed to disk outside
+  // the JSON body parser, with a hard per-request byte cap.
+  UPLOAD_DIR: z.string().min(1),
+  UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).default(104_857_600),
+
   // OpenCode local LLM server
   OPENCODE_BASE_URL: z.string().url(),
   OPENCODE_SERVER_PASSWORD: z.string().min(1),

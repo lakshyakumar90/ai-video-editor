@@ -7,8 +7,17 @@ import express, {
 import cors from "cors";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
+import { uploadsRouter } from "./routes/uploads.js";
 import { logger } from "./lib/logger.js";
 import { env } from "./config/env.js";
+
+/**
+ * JSON payloads are small by design (prompts, edit instructions,
+ * preferences). Large uploads must use the dedicated `/api/uploads`
+ * route instead; the small limit keeps a large body from ever
+ * reaching the JSON parser.
+ */
+const JSON_BODY_LIMIT = "100kb";
 
 export function createApp(): Express {
   const app = express();
@@ -17,7 +26,11 @@ export function createApp(): Express {
   // All request/response logging flows through the redacted logger; a
   // header or body carrying a secret can never be written to the logs.
   app.use(pinoHttp({ logger }));
-  app.use(express.json());
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+
+  // Large uploads (raw footage, audio) stream straight to disk with
+  // their own byte cap (UPLOAD_MAX_BYTES), not through express.json.
+  app.use("/api/uploads", uploadsRouter());
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
