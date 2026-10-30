@@ -15,6 +15,7 @@ node_modules
 # Local Better Auth sessions and encrypted LLM key database
 apps/api/data/invideo.sqlite*
 apps/api/uploads/invideo.sqlite*
+apps/api/uploads/library/
 
 # Testing
 coverage

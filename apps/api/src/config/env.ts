@@ -18,8 +18,13 @@ const envSchema = z.object({
   // CORS
   WEB_ORIGIN: z.string().url(),
 
-  // Pexels API
-  PIXABAY_API_KEY: z.string().min(1, "PEXELS_API_KEY cannot be empty"),
+  TTS_PROVIDER: z.enum(["fake", "openai"]).default("fake"),
+  TTS_MODEL: z.string().min(1).default("gpt-4o-mini-tts"),
+  TTS_VOICE: z.string().min(1).default("alloy"),
+  STOCK_PROVIDER: z.enum(["fake", "pexels"]).default("fake"),
+  TRANSCRIPTION_PROVIDER: z.enum(["fake", "whisper"]).default("fake"),
+  STORAGE_PROVIDER: z.enum(["local-disk"]).default("local-disk"),
+  MEDIA_MUSIC_DIR: z.string().min(1).default("assets/music"),
 
   // Local Whisper.cpp
   WHISPER_CPP_PATH: z.string().min(1),
