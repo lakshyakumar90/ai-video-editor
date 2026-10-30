@@ -29,6 +29,11 @@ const envSchema = z.object({
   // the JSON body parser, with a hard per-request byte cap.
   UPLOAD_DIR: z.string().min(1),
   UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).default(104_857_600),
+  MEDIA_DATABASE_URL: z.string().optional(),
+  MEDIA_PROXY_HEIGHT: z.coerce.number().int().min(144).max(1080).default(480),
+  MEDIA_THUMBNAIL_INTERVAL_SECONDS: z.coerce.number().positive().default(10),
+  MEDIA_MAX_VISION_FRAMES: z.coerce.number().int().min(0).max(24).default(12),
+  MEDIA_EMBEDDING_MODEL: z.string().min(1).default("text-embedding-3-small"),
 
   // Deployment mode (docs/decision-deployment.md):
   // - "self-hosted": CLI LLM providers (OpenCode server, Codex CLI) allowed

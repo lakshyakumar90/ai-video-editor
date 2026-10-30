@@ -100,15 +100,43 @@ export const assetSchema = z
     name: z.string().min(1).optional(),
     /** Lower-resolution preview copy used when editing; edits re-render. */
     proxyPath: z.string().min(1).optional(),
+    /** CFR/rotation-normalized derivative; `src` continues to identify the original. */
+    normalizedPath: z.string().min(1).optional(),
     /** Known source duration, seconds. Images/colors have none. */
     duration: z.number().positive().optional(),
     transcript: transcriptSchema.optional(),
+    thumbnails: z.array(z.string().min(1)).default([]),
+    waveformPath: z.string().min(1).optional(),
+    sceneChanges: z.array(z.number().min(0)).default([]),
+    frameDescriptions: z
+      .array(
+        z.object({
+          start: z.number().min(0),
+          end: z.number().min(0),
+          description: z.string().min(1),
+        }),
+      )
+      .default([]),
+    /** Initial subject-independent portrait crop, represented in source-relative fractions. */
+    centerCrop: z
+      .object({
+        x: z.number().min(0).max(1),
+        y: z.number().min(0).max(1),
+        width: z.number().min(0).max(1),
+        height: z.number().min(0).max(1),
+      })
+      .optional(),
+    ingestionStatus: z
+      .enum(["queued", "processing", "complete", "failed"])
+      .optional(),
     /** Silent spans detected in the asset's own timebase. */
     silenceRanges: z.array(silenceRangeSchema).default([]),
   })
   .refine(
     (asset) =>
-      asset.kind === "video" || asset.kind === "audio" ? asset.duration !== undefined : true,
+      asset.kind === "video" || asset.kind === "audio"
+        ? asset.duration !== undefined
+        : true,
     { message: "video and audio assets must declare their duration" },
   )
   .refine(
@@ -179,7 +207,12 @@ export const captionClipSchema = z.object({
 
 export const clipSchema = z.union([mediaClipSchema, captionClipSchema]);
 
-export const trackKindSchema = z.enum(["video", "audio", "captions", "overlay"]);
+export const trackKindSchema = z.enum([
+  "video",
+  "audio",
+  "captions",
+  "overlay",
+]);
 
 export const trackSchema = z.object({
   id: stableIdSchema,
@@ -190,7 +223,11 @@ export const trackSchema = z.object({
 });
 
 /** End source point of a media clip on its asset's timebase. */
-export function sourceOutOf(clip: { sourceIn: number; duration: number; speed: number }): number {
+export function sourceOutOf(clip: {
+  sourceIn: number;
+  duration: number;
+  speed: number;
+}): number {
   return clip.sourceIn + clip.duration * clip.speed;
 }
 
@@ -212,7 +249,8 @@ export const styleSchema = z.object({
 export const timelineSchema = z
   .object({
     schemaVersion: z.literal(2, {
-      message: "expected schemaVersion 2 (migrate older timelines with migrateTimeline)",
+      message:
+        "expected schemaVersion 2 (migrate older timelines with migrateTimeline)",
     }),
     project: projectSchema,
     /** Every piece of source media used by clips. */
@@ -227,10 +265,15 @@ export const timelineSchema = z
     // Duplicate ids make edits and undo ambiguous - reject them up front.
     const seen = new Map<string, string>();
     const checkId = (id: string, label: string) => {
-      if (seen.has(id)) issues.push(`duplicate id "${id}" used by ${seen.get(id)} and ${label}`);
+      if (seen.has(id))
+        issues.push(
+          `duplicate id "${id}" used by ${seen.get(id)} and ${label}`,
+        );
       else seen.set(id, label);
     };
-    timeline.assets.forEach((asset, index) => checkId(asset.id, `assets[${index}]`));
+    timeline.assets.forEach((asset, index) =>
+      checkId(asset.id, `assets[${index}]`),
+    );
     timeline.tracks.forEach((track) => {
       checkId(track.id, `track "${track.id}"`);
       track.clips.forEach((clip) => checkId(clip.id, `clip "${clip.id}"`));
@@ -247,21 +290,30 @@ export const timelineSchema = z
         // Captions clips vs media clips, per track kind.
         if (track.kind === "captions") {
           if ("assetId" in clip) {
-            issues.push(`clip "${clip.id}" on captions track "${track.id}" must not reference an asset`);
+            issues.push(
+              `clip "${clip.id}" on captions track "${track.id}" must not reference an asset`,
+            );
           }
         } else {
           if (!("assetId" in clip)) {
-            issues.push(`clip "${clip.id}" on ${track.kind} track "${track.id}" must reference an assetId`);
+            issues.push(
+              `clip "${clip.id}" on ${track.kind} track "${track.id}" must reference an assetId`,
+            );
             previous = clip;
             continue;
           }
           const asset = findAsset(clip.assetId);
           if (!asset) {
-            issues.push(`clip "${clip.id}" references unknown asset "${clip.assetId}"`);
+            issues.push(
+              `clip "${clip.id}" references unknown asset "${clip.assetId}"`,
+            );
             previous = clip;
             continue;
           }
-          const kinds = track.kind === "audio" ? (["audio"] as const) : (["video", "image", "color"] as const);
+          const kinds =
+            track.kind === "audio"
+              ? (["audio"] as const)
+              : (["video", "image", "color"] as const);
           if (!(kinds as readonly string[]).includes(asset.kind)) {
             issues.push(
               `clip "${clip.id}" places ${asset.kind} asset "${asset.id}" on a ${track.kind} track "${track.id}"`,
@@ -277,14 +329,19 @@ export const timelineSchema = z
             }
           }
           if (clip.reframe && asset.kind === "audio") {
-            issues.push(`clip "${clip.id}" has a reframe but audio assets have no frame`);
+            issues.push(
+              `clip "${clip.id}" has a reframe but audio assets have no frame`,
+            );
           }
         }
 
         // Caption words must sit inside their clip's window.
         if ("words" in clip) {
           for (const word of clip.words) {
-            if (word.start < clip.start - epsilon || word.end > clip.start + clip.duration + epsilon) {
+            if (
+              word.start < clip.start - epsilon ||
+              word.end > clip.start + clip.duration + epsilon
+            ) {
               issues.push(
                 `caption word "${word.word}" [${word.start}, ${word.end}] falls outside clip "${clip.id}" window [${clip.start}, ${clip.start + clip.duration}]`,
               );
@@ -293,7 +350,10 @@ export const timelineSchema = z
         }
 
         // Non-overlapping clips per track (touching edges allowed).
-        if (previous && clip.start < previous.start + previous.duration - epsilon) {
+        if (
+          previous &&
+          clip.start < previous.start + previous.duration - epsilon
+        ) {
           issues.push(
             `clip "${clip.id}" starts at ${clip.start} before clip "${previous.id}" ends at ${previous.start + previous.duration} on track "${track.id}"`,
           );

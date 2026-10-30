@@ -6,10 +6,7 @@ import {
   type Timeline,
   type TimelineInput,
 } from "./timeline.js";
-import {
-  timelineSchemaV1,
-  type TimelineV1,
-} from "./timeline-v1.js";
+import { timelineSchemaV1, type TimelineV1 } from "./timeline-v1.js";
 
 /** Raised when neither the v1 nor the v2 schema accepts the input. */
 export class TimelineMigrationError extends Error {
@@ -17,7 +14,9 @@ export class TimelineMigrationError extends Error {
   readonly issues: string[];
 
   constructor(issues: string[]) {
-    super(`timeline does not match schemaVersion 1 or 2 - ${issues.join("; ")}`);
+    super(
+      `timeline does not match schemaVersion 1 or 2 - ${issues.join("; ")}`,
+    );
     this.name = "TimelineMigrationError";
     this.issues = issues;
   }
@@ -25,7 +24,8 @@ export class TimelineMigrationError extends Error {
 
 function issueMessages(error: z.ZodError): string[] {
   return error.issues.map(
-    (issue) => `${issue.path.length > 0 ? issue.path.join(".") : "(root)"}: ${issue.message}`,
+    (issue) =>
+      `${issue.path.length > 0 ? issue.path.join(".") : "(root)"}: ${issue.message}`,
   );
 }
 
@@ -66,6 +66,9 @@ export function migrateV1TimelineToV2(v1: TimelineV1): Timeline {
       origin,
       src: source,
       ...(duration !== undefined ? { duration } : {}),
+      thumbnails: [],
+      sceneChanges: [],
+      frameDescriptions: [],
       silenceRanges: [],
     } as Timeline["assets"][number];
     assets.set(source, asset);
@@ -116,7 +119,12 @@ export function migrateV1TimelineToV2(v1: TimelineV1): Timeline {
     }
 
     // Narration audio → audio-track clip (generated TTS asset).
-    const audioAsset = assetFor(scene.audio.path, "audio", "generated", sceneDuration);
+    const audioAsset = assetFor(
+      scene.audio.path,
+      "audio",
+      "generated",
+      sceneDuration,
+    );
     audioClips.push({
       id: `clip-${scene.id}-narration`,
       assetId: audioAsset.id,
@@ -134,8 +142,7 @@ export function migrateV1TimelineToV2(v1: TimelineV1): Timeline {
         start: sceneStart + word.start,
         end: sceneStart + word.end,
       }));
-      const text =
-        scene.narration ?? words.map((word) => word.word).join(" ");
+      const text = scene.narration ?? words.map((word) => word.word).join(" ");
       captionClips.push({
         id: `clip-${scene.id}-captions`,
         start: sceneStart,
@@ -150,9 +157,19 @@ export function migrateV1TimelineToV2(v1: TimelineV1): Timeline {
 
   const trackList: Timeline["tracks"] = [];
   if (videoClips.length > 0) {
-    trackList.push({ id: "track-video", kind: "video", muted: false, clips: videoClips });
+    trackList.push({
+      id: "track-video",
+      kind: "video",
+      muted: false,
+      clips: videoClips,
+    });
   }
-  trackList.push({ id: "track-audio", kind: "audio", muted: false, clips: audioClips });
+  trackList.push({
+    id: "track-audio",
+    kind: "audio",
+    muted: false,
+    clips: audioClips,
+  });
   if (captionClips.length > 0) {
     trackList.push({
       id: "track-captions",
@@ -205,9 +222,15 @@ export function migrateV1TimelineToV2(v1: TimelineV1): Timeline {
         ...(v1.style.backgroundColor !== undefined
           ? { backgroundColor: v1.style.backgroundColor }
           : {}),
-        ...(v1.style.textColor !== undefined ? { textColor: v1.style.textColor } : {}),
-        ...(v1.style.fontFamily !== undefined ? { fontFamily: v1.style.fontFamily } : {}),
-        ...(v1.style.fontSize !== undefined ? { fontSize: v1.style.fontSize } : {}),
+        ...(v1.style.textColor !== undefined
+          ? { textColor: v1.style.textColor }
+          : {}),
+        ...(v1.style.fontFamily !== undefined
+          ? { fontFamily: v1.style.fontFamily }
+          : {}),
+        ...(v1.style.fontSize !== undefined
+          ? { fontSize: v1.style.fontSize }
+          : {}),
       }
     : undefined;
 
