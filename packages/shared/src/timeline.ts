@@ -7,11 +7,19 @@ export const resolutionSchema = z.object({
   height: z.number().int().positive(),
 });
 
+/**
+ * The two MVP modes (docs/mvp.md). They differ in how a project starts
+ * but both produce the same editable `Timeline`.
+ */
+export const mvpModeSchema = z.enum(["prompt-to-video", "footage-to-edit"]);
+
 export const projectSchema = z.object({
   title: z.string().min(1),
   aspectRatio: aspectRatioSchema,
   fps: z.number().int().positive(),
   resolution: resolutionSchema,
+  /** Which MVP mode created this timeline; unset on legacy timelines. */
+  mode: mvpModeSchema.optional(),
 });
 
 export const audioSchema = z.object({
@@ -70,6 +78,7 @@ export const timelineSchema = z.object({
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 export type Resolution = z.infer<typeof resolutionSchema>;
 export type Project = z.infer<typeof projectSchema>;
+export type MvpMode = z.infer<typeof mvpModeSchema>;
 export type Audio = z.infer<typeof audioSchema>;
 export type VisualType = z.infer<typeof visualTypeSchema>;
 export type Trim = z.infer<typeof trimSchema>;
