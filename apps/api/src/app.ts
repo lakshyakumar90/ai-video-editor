@@ -6,12 +6,17 @@ import express, {
 } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { pinoHttp } from "pino-http";
+import { logger } from "./lib/logger.js";
 import { env } from "./config/env.js";
 
 export function createApp(): Express {
   const app = express();
   app.use(helmet());
   app.use(cors({ origin: env.WEB_ORIGIN }));
+  // All request/response logging flows through the redacted logger; a
+  // header or body carrying a secret can never be written to the logs.
+  app.use(pinoHttp({ logger }));
   app.use(express.json());
 
   app.get("/health", (_req: Request, res: Response) => {
