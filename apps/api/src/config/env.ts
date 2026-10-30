@@ -23,6 +23,18 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().min(1),
   UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).default(104_857_600),
 
+  // Master key used to encrypt stored user API keys (32 random bytes,
+  // hex-encoded). Users in hosted deployments bring their own API keys
+  // (docs/decision-deployment.md); those keys are only ever persisted
+  // encrypted under this key. Rotating it requires re-encrypting every
+  // stored key.
+  MASTER_KEY: z
+    .string()
+    .regex(
+      /^[0-9a-fA-F]{64}$/,
+      "MASTER_KEY must be 64 hex characters (32 random bytes)",
+    ),
+
   // OpenCode local LLM server
   OPENCODE_BASE_URL: z.string().url(),
   OPENCODE_SERVER_PASSWORD: z.string().min(1),
