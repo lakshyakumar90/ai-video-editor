@@ -1,5 +1,19 @@
 # Phase 8: Voice, stock, captions, and storage providers
 
+## Implementation status
+
+- [x] Provider interfaces and env-selected factory for TTS, stock, transcription, and storage.
+- [x] Fake MP3 TTS and OpenAI TTS producing one measured MP3 per scene.
+- [x] Probe the encoded speech duration and expose that duration to scene output.
+- [x] Evenly timed fake captions and word-timed Whisper transcription.
+- [x] ASS caption generation in 3- or 4-word events.
+- [x] Local fake stock clip and portrait Pexels search near 1080p.
+- [x] Cache downloads by clip ID and broaden searches after zero results.
+- [x] Rank up to ten candidates per scene and avoid reusing a selected clip.
+- [x] Local-disk storage adapter with put, get, getUrl, and delete.
+- [x] Three mood-tagged, procedurally generated CC0 music beds.
+- [x] OpenAI TTS and Pexels keys resolve per user from the encrypted provider vault.
+
 Provider implementations are selected by `TTS_PROVIDER`, `STOCK_PROVIDER`,
 `TRANSCRIPTION_PROVIDER`, and `STORAGE_PROVIDER`. Defaults are local fakes with
 `STORAGE_PROVIDER=local-disk`; real implementations are `TTS_PROVIDER=openai`,
