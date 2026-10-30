@@ -14,6 +14,7 @@ import { toNodeHandler } from "better-auth/node";
 import { auth, authReady } from "./services/auth.js";
 import { providersRouter } from "./routes/providers.js";
 import { llmRouter } from "./routes/llm.js";
+import { mediaRouter } from "./routes/media.js";
 
 /**
  * JSON payloads are small by design (prompts, edit instructions,
@@ -47,6 +48,7 @@ export function createApp(): Express {
   // Large uploads (raw footage, audio) stream straight to disk with
   // their own byte cap (UPLOAD_MAX_BYTES), not through express.json.
   app.use("/api/uploads", uploadsRouter());
+  app.use("/api/media", mediaRouter());
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
