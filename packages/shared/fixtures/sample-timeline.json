@@ -1,29 +1,100 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "project": {
     "title": "Big Sur Road Trip",
     "aspectRatio": "16:9",
     "fps": 30,
-    "resolution": { "width": 1920, "height": 1080 }
+    "resolution": { "width": 1920, "height": 1080 },
+    "mode": "prompt-to-video"
   },
-  "scenes": [
+  "assets": [
     {
-      "id": "scene-1",
-      "narration": "Welcome to Big Sur",
-      "audio": { "path": "audio/scene-1.mp3", "duration": 3.5 },
-      "visual": {
-        "type": "image",
-        "source": "media/coast.jpg",
-        "trim": { "start": 0, "end": 3.5 }
-      },
-      "captions": [
-        { "word": "Welcome", "start": 0, "end": 1.2 },
-        { "word": "to", "start": 1.2, "end": 1.8 },
-        { "word": "Big", "start": 1.8, "end": 2.6 },
-        { "word": "Sur", "start": 2.6, "end": 3.5 }
+      "id": "asset-coast",
+      "kind": "image",
+      "origin": "stock",
+      "src": "media/coast.jpg",
+      "name": "coast.jpg"
+    },
+    {
+      "id": "asset-narration",
+      "kind": "audio",
+      "origin": "generated",
+      "src": "audio/scene-1.mp3",
+      "duration": 3.5
+    },
+    {
+      "id": "asset-music",
+      "kind": "audio",
+      "origin": "stock",
+      "src": "music/ambient.mp3",
+      "duration": 180
+    }
+  ],
+  "tracks": [
+    {
+      "id": "track-video",
+      "kind": "video",
+      "clips": [
+        {
+          "id": "clip-coast",
+          "assetId": "asset-coast",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 3.5,
+          "speed": 1,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "id": "track-audio",
+      "kind": "audio",
+      "clips": [
+        {
+          "id": "clip-narration",
+          "assetId": "asset-narration",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 3.5,
+          "speed": 1,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "id": "track-captions",
+      "kind": "captions",
+      "clips": [
+        {
+          "id": "clip-caption",
+          "start": 0,
+          "duration": 3.5,
+          "text": "Welcome to Big Sur",
+          "words": [
+            { "word": "Welcome", "start": 0, "end": 1.2 },
+            { "word": "to", "start": 1.2, "end": 1.8 },
+            { "word": "Big", "start": 1.8, "end": 2.6 },
+            { "word": "Sur", "start": 2.6, "end": 3.5 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "track-music",
+      "kind": "audio",
+      "name": "Music",
+      "clips": [
+        {
+          "id": "clip-music",
+          "assetId": "asset-music",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 3.5,
+          "speed": 1,
+          "volume": 0.4
+        }
       ]
     }
   ],
-  "music": { "src": "music/ambient.mp3", "volume": 0.4, "loop": true },
   "style": { "backgroundColor": "#000000", "textColor": "#ffffff" }
 }
