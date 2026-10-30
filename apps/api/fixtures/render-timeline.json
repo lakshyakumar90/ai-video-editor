@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 2,
+  "project": {
+    "title": "Renderer acceptance fixture",
+    "aspectRatio": "9:16",
+    "fps": 30,
+    "resolution": { "width": 1080, "height": 1920 }
+  },
+  "assets": [
+    {
+      "id": "fixture-video",
+      "kind": "video",
+      "origin": "uploaded",
+      "src": "../../../tmp/samples/sample-clip.mp4",
+      "duration": 4
+    },
+    {
+      "id": "fixture-voice",
+      "kind": "audio",
+      "origin": "generated",
+      "src": "../../../tmp/samples/sample.mp3",
+      "duration": 3.03
+    }
+  ],
+  "tracks": [
+    {
+      "id": "video-track",
+      "kind": "video",
+      "clips": [
+        {
+          "id": "scene-1",
+          "assetId": "fixture-video",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 1,
+          "speed": 1,
+          "volume": 1
+        },
+        {
+          "id": "scene-2",
+          "assetId": "fixture-video",
+          "sourceIn": 1,
+          "start": 1,
+          "duration": 1,
+          "speed": 1,
+          "volume": 1
+        },
+        {
+          "id": "scene-3",
+          "assetId": "fixture-video",
+          "sourceIn": 2,
+          "start": 2,
+          "duration": 1,
+          "speed": 1,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "id": "voice-track",
+      "kind": "audio",
+      "name": "Narration",
+      "clips": [
+        {
+          "id": "voice",
+          "assetId": "fixture-voice",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 3,
+          "speed": 1,
+          "volume": 1
+        }
+      ]
+    },
+    {
+      "id": "music-track",
+      "kind": "audio",
+      "name": "Music",
+      "clips": [
+        {
+          "id": "music-bed",
+          "assetId": "fixture-voice",
+          "sourceIn": 0,
+          "start": 0,
+          "duration": 3,
+          "speed": 1,
+          "volume": 0.15
+        }
+      ]
+    },
+    {
+      "id": "caption-track",
+      "kind": "captions",
+      "clips": [
+        {
+          "id": "caption-1",
+          "start": 0,
+          "duration": 1,
+          "text": "Three scenes"
+        },
+        {
+          "id": "caption-2",
+          "start": 1,
+          "duration": 1,
+          "text": "One timeline"
+        },
+        {
+          "id": "caption-3",
+          "start": 2,
+          "duration": 1,
+          "text": "Portrait export"
+        }
+      ]
+    }
+  ],
+  "style": { "backgroundColor": "#000000", "textColor": "#ffffff" }
+}
