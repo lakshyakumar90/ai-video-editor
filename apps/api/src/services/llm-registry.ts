@@ -60,7 +60,7 @@ export interface LlmProviderDescriptor {
   readonly capabilities: LlmCapabilities;
   /** Fallback models, highest priority first (not meaningful for fakes). */
   readonly models?: ModelRef[];
-  create(): LlmProvider;
+  create(modelOverride?: string): LlmProvider;
 }
 
 export type LlmProviderName =
@@ -160,8 +160,9 @@ function createCompatiblePresetDescriptors(): Array<
           });
           await provider.healthProbe(options);
         },
-        create: () => {
-          if (!model)
+        create: (modelOverride) => {
+          const selectedModel = modelOverride ?? model;
+          if (!selectedModel)
             throw new ProviderResolutionError(
               `provider "${id}" needs ${envPrefix}_MODEL`,
             );
@@ -171,7 +172,7 @@ function createCompatiblePresetDescriptors(): Array<
             );
           return new OpenAiCompatibleProvider({
             baseUrl,
-            model,
+            model: selectedModel,
             providerId: id,
           });
         },
@@ -186,6 +187,8 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
       "fake",
       {
         name: "fake",
+        id: "fake",
+        kind: "test",
         description: "Hardcoded dev double (FakeLlmProvider) - no network",
         deployment: "any",
         devOnly: true,
@@ -205,8 +208,10 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           const models = LLM_MODEL_FALLBACK.openCode();
           return models.length > 0 ? models : undefined;
         },
-        create: () => {
-          const models = LLM_MODEL_FALLBACK.openCode();
+        create: (modelOverride) => {
+          const models = modelOverride
+            ? parseProviderModelEntries(modelOverride)
+            : LLM_MODEL_FALLBACK.openCode();
           return new OpenCodeProvider({
             baseUrl: process.env.OPENCODE_BASE_URL ?? "",
             password: process.env.OPENCODE_SERVER_PASSWORD ?? "",
@@ -225,9 +230,9 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
         deployment: "hosted",
         capabilities:
           OPENAI_COMPATIBLE_PRESETS["openai-compatible"].capabilities,
-        create: () => {
+        create: (modelOverride) => {
           const baseUrl = process.env.LLM_HOSTED_BASE_URL ?? "";
-          const model = process.env.LLM_HOSTED_MODEL ?? "";
+          const model = modelOverride ?? process.env.LLM_HOSTED_MODEL ?? "";
           if (baseUrl === "" || model === "") {
             throw new ProviderResolutionError(
               'provider "hosted-openai" needs LLM_HOSTED_BASE_URL and LLM_HOSTED_MODEL',
@@ -251,8 +256,10 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           streaming: true,
           maxContext: null,
         },
-        create: () =>
-          new OpenAiProvider(process.env.OPENAI_MODEL ?? "gpt-4.1-mini"),
+        create: (modelOverride) =>
+          new OpenAiProvider(
+            modelOverride ?? process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+          ),
       },
     ],
     [
@@ -268,9 +275,9 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           streaming: true,
           maxContext: null,
         },
-        create: () =>
+        create: (modelOverride) =>
           new AnthropicProvider(
-            process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+            modelOverride ?? process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
           ),
       },
     ],
@@ -287,8 +294,10 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           streaming: true,
           maxContext: null,
         },
-        create: () =>
-          new GeminiProvider(process.env.GEMINI_MODEL ?? "gemini-2.5-flash"),
+        create: (modelOverride) =>
+          new GeminiProvider(
+            modelOverride ?? process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+          ),
       },
     ],
     [
@@ -299,10 +308,10 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           "Codex CLI using local saved login or a request-scoped CODEX_API_KEY",
         deployment: "self-hosted",
         capabilities: SUPPORTED_LLM_CAPABILITIES,
-        create: () =>
+        create: (modelOverride) =>
           new CodexCliProvider({
-            ...(process.env.CODEX_MODEL
-              ? { model: process.env.CODEX_MODEL }
+            ...((modelOverride ?? process.env.CODEX_MODEL)
+              ? { model: modelOverride ?? process.env.CODEX_MODEL }
               : {}),
           }),
       },
@@ -317,7 +326,10 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
  * CLI-backed providers never resolve in `hosted` mode, and dev-only
  * doubles never resolve in production.
  */
-export function getLlmProvider(reference?: string): LlmProvider {
+export function getLlmProvider(
+  reference?: string,
+  modelOverride?: string,
+): LlmProvider {
   const name = (reference ??
     process.env.LLM_PROVIDER ??
     "opencode") as LlmProviderName;
@@ -342,7 +354,7 @@ export function getLlmProvider(reference?: string): LlmProvider {
     );
   }
 
-  return descriptor.create();
+  return descriptor.create(modelOverride);
 }
 
 /** A minimal credential-aware probe through the provider's native API. */
@@ -412,6 +424,12 @@ function registryDefaultModel(name: LlmProviderName): string | null {
     codex: process.env.CODEX_MODEL,
   };
   return configured[name] ?? null;
+}
+
+export function getLlmProviderDefaultModel(
+  name: LlmProviderName,
+): string | null {
+  return llmProviders.get(name)?.defaultModel ?? registryDefaultModel(name);
 }
 
 /** Re-exported so consumers never import `ZodType` handling themselves. */

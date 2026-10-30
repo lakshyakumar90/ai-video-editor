@@ -1,4 +1,5 @@
 import { llmKeyVault } from "./llm-key-vault.js";
+import { LlmProviderError } from "./llm-provider-error.js";
 
 export type LlmKeyPayer = "user" | "platform";
 export interface ResolvedLlmCredential {
@@ -24,5 +25,9 @@ export function resolveLlmCredential(input: {
   ) {
     return { apiKey: input.platformKey, payer: "platform" };
   }
-  throw new Error(`no API key is configured for ${input.providerId}`);
+  throw new LlmProviderError(
+    input.providerId,
+    "missing_key",
+    `no API key is configured for ${input.providerId}`,
+  );
 }

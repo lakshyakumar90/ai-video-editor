@@ -13,6 +13,7 @@ const envSchema = z.object({
     .min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
   BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
   LLM_DATABASE_PATH: z.string().min(1).optional(),
+  LLM_MODEL_PRICING_JSON: z.string().default("{}"),
 
   // CORS
   WEB_ORIGIN: z.string().url(),

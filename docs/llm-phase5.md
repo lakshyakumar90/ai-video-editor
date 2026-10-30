@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 12/18
+**Progress:** 17/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -27,16 +27,16 @@ instances and secrets must not be shared across users.
       mode.
 - [x] Expand the registry with provider id, kind, capabilities, default model,
       and health probe.
-- [ ] Route script planning, edit-agent, vision, and translation by task.
-- [ ] Add per-task fallback for rate limits, quota errors, and timeouts; never
+- [x] Route script planning, edit-agent, vision, and translation by task.
+- [x] Add per-task fallback for rate limits, quota errors, and timeouts; never
       switch from a user key to a platform key without explicit consent.
 - [x] Add an AES-256-GCM key vault with one encrypted record per user/provider
       and last-four-character display metadata.
-- [ ] Resolve credentials per request (user key first, eligible platform key
+- [x] Resolve credentials per request (user key first, eligible platform key
       only with consent); do not keep credentials in global state.
-- [ ] Add `POST /api/providers/test` with a one-token call, capability report,
+- [x] Add `POST /api/providers/test` with a one-token call, capability report,
       and readable failure.
-- [ ] Record tokens and estimated cost per call, tagged with provider, model,
+- [x] Record tokens and estimated cost per call, tagged with provider, model,
       and whose key paid.
 - [ ] Add a provider contract suite for JSON output, tools, error mapping, and
       timeouts; use fakes and optional live smoke tests.
@@ -47,4 +47,8 @@ The selected identity integration is Better Auth. BYOK key storage and
 per-user credential resolution will use the verified Better Auth session user
 id. Never trust a client-supplied `userId` header or body field for key
 ownership. Configure `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the existing
-32-byte hex `MASTER_KEY` before starting the API.
+32-byte hex `MASTER_KEY` before starting the API. Hosted token-cost estimates
+are calculated when `LLM_MODEL_PRICING_JSON` defines a model or
+`provider:model` entry with `inputPerMillionUsd` and `outputPerMillionUsd`;
+unknown hosted pricing is stored as `null`, while local inference is recorded
+as zero cost.

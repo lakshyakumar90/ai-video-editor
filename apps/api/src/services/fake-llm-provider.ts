@@ -35,6 +35,8 @@ export const fakeSceneScript: ScenePlans = scenePlansSchema.parse([
 export class FakeLlmProvider extends LlmProviderBase {
   readonly capabilities: ProviderCapabilities = JSON_IN_TEXT_CAPABILITIES;
 
+  async healthProbe(): Promise<void> {}
+
   async generateJson<T>(prompt: string, schema: ZodType<T>): Promise<T> {
     if (prompt.length === 0) {
       throw new Error("FakeLlmProvider requires a non-empty prompt");

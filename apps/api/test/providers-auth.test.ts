@@ -34,6 +34,18 @@ describe("BYOK routes", () => {
       : cookieHeader
         ? [cookieHeader]
         : [];
+    const fakeProbe = await request(app)
+      .post("/api/providers/test")
+      .set("Cookie", cookies)
+      .send({ providerId: "fake" });
+    expect(fakeProbe.status).toBe(200);
+    expect(fakeProbe.body).toMatchObject({ ok: true, providerId: "fake" });
+    const missingKey = await request(app)
+      .post("/api/providers/test")
+      .set("Cookie", cookies)
+      .send({ providerId: "openai" });
+    expect(missingKey.status).toBe(400);
+    expect(missingKey.body.error).toMatch(/no API key is configured/);
     const saved = await request(app)
       .put("/api/providers/keys")
       .set("Cookie", cookies)
@@ -54,5 +66,19 @@ describe("BYOK routes", () => {
     expect(listed.body.keys).toEqual([
       expect.objectContaining({ providerId: "openai", lastFour: "1234" }),
     ]);
+    const previousRoute = process.env.LLM_TASK_SCRIPT_PLANNING;
+    process.env.LLM_TASK_SCRIPT_PLANNING = "fake";
+    try {
+      const plan = await request(app)
+        .post("/api/llm/scene-plan")
+        .set("Cookie", cookies)
+        .send({ prompt: "A short Tokyo travel video" });
+      expect(plan.status).toBe(200);
+      expect(plan.body.scenes).toHaveLength(3);
+    } finally {
+      if (previousRoute === undefined)
+        delete process.env.LLM_TASK_SCRIPT_PLANNING;
+      else process.env.LLM_TASK_SCRIPT_PLANNING = previousRoute;
+    }
   });
 });
