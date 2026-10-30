@@ -10,7 +10,10 @@
     "test": "vitest run",
     "lint": "prettier --check \"src/**/*.ts\"",
     "check-types": "tsc --noEmit",
-    "llm:scene-plan": "tsx scripts/generate-scene-plan.ts"
+    "llm:scene-plan": "tsx scripts/generate-scene-plan.ts",
+    "media:providers": "tsx scripts/test-media-providers.ts",
+    "media:scene": "tsx scripts/generate-scene-media.ts",
+    "media:music": "tsx scripts/create-music-library.ts"
   },
   "keywords": [],
   "author": "",
