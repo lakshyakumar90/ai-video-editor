@@ -40,6 +40,17 @@ const envSchema = z.object({
       "MASTER_KEY must be 64 hex characters (32 random bytes)",
     ),
 
+  // LLM provider selection lives in the registry (llm-registry.ts).
+  LLM_PROVIDER: z
+    .enum(["fake", "opencode", "hosted-openai"])
+    .default("opencode"),
+
+  // Hosted OpenAI-compatible provider (bring-your-own-key; only needed
+  // when LLM_PROVIDER=hosted-openai).
+  LLM_HOSTED_BASE_URL: z.string().default(""),
+  LLM_HOSTED_API_KEY: z.string().default(""),
+  LLM_HOSTED_MODEL: z.string().default(""),
+
   // OpenCode local LLM server
   OPENCODE_BASE_URL: z.string().url(),
   OPENCODE_SERVER_PASSWORD: z.string().min(1),
@@ -70,13 +81,3 @@ if (!result.success) {
 }
 
 export const env = result.data;
-
-/** Preferred OpenCode models in priority order, parsed from `provider/model` entries. */
-export const openCodePreferredModels = env.OPENCODE_MODEL_PREFERENCE.split(",")
-  .map((entry) => entry.trim())
-  .filter(Boolean)
-  .map((entry) => {
-    const [providerID, ...rest] = entry.split("/");
-    return { providerID: providerID ?? "", modelID: rest.join("/") };
-  })
-  .filter((model) => model.modelID.length > 0);

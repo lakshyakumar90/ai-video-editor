@@ -50,7 +50,10 @@ export interface RetryOptions {
 }
 
 /** Rejects with `TimeoutError` if `promise` has not settled after `timeoutMs`. */
-export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+export function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
   if (timeoutMs <= 0) return promise;
 
   // The losing promise may reject after the race settles; silence it so it
@@ -60,7 +63,10 @@ export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new DOMException(`timed out after ${timeoutMs}ms`, "TimeoutError")),
+      () =>
+        reject(
+          new DOMException(`timed out after ${timeoutMs}ms`, "TimeoutError"),
+        ),
       timeoutMs,
     );
   });
@@ -76,8 +82,12 @@ export async function withRetry<T>(
   operation: (attempt: number) => Promise<T>,
   options: RetryOptions = {},
 ): Promise<T> {
-  const { attempts = 3, baseDelayMs = 500, maxDelayMs = 8_000, timeoutMs = 0 } =
-    options;
+  const {
+    attempts = 3,
+    baseDelayMs = 500,
+    maxDelayMs = 8_000,
+    timeoutMs = 0,
+  } = options;
   const shouldRetry = options.shouldRetry ?? isTransientError;
 
   let lastError: unknown;
@@ -94,7 +104,8 @@ export async function withRetry<T>(
   throw lastError;
 }
 
-const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+const delay = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Transient SDK/server/transport failures worth retrying with backoff. */
 export function isTransientError(error: unknown): boolean {
@@ -122,7 +133,9 @@ function extractStatus(error: unknown): number | null {
     return (cause as { status: number }).status;
   }
   const match =
-    error instanceof Error ? /\bUnexpectedStatus:\s*(\d{3})\b/.exec(error.message) : null;
+    error instanceof Error
+      ? /\bUnexpectedStatus:\s*(\d{3})\b/.exec(error.message)
+      : null;
   return match ? Number(match[1]) : null;
 }
 
@@ -177,6 +190,12 @@ export function buildPromptText(prompt: string, schema: ZodType): string {
 /**
  * `LlmProvider` backed by a local OpenCode server.
  *
+ * Capabilities (honest): JSON-in-text only, no native tool calling -
+ * see {@link SUPPORTED_LLM_CAPABILITIES}. Free CLI models return plain
+ * assistant text, so every prompt embeds the JSON schema
+ * ({@link SYSTEM_INSTRUCTIONS}) and replies are parsed defensively
+ * ({@link parseJsonReply}); there is no tool-calling loop.
+ *
  * Each {@link generateJson} call runs in its own short-lived session: the
  * prompt is sent with system instructions inline, the agent loop is awaited,
  * the assistant reply is extracted as text, parsed as JSON, and validated
@@ -197,8 +216,7 @@ export function formatValidationIssues(error: z.ZodError): string {
 
 /** Short one-line rendering of any failure for the aggregate error message. */
 function summarizeError(error: unknown): string {
-  const text =
-    error instanceof Error ? error.message : "unknown failure";
+  const text = error instanceof Error ? error.message : "unknown failure";
   return text.length > 160 ? `${text.slice(0, 160)}…` : text;
 }
 
@@ -224,7 +242,11 @@ export class RateLimitError extends OpenCodeProviderError {
  * Appends the validation error from the previous attempt to the original
  * prompt, so the model sees exactly which rules its reply violated.
  */
-export function buildRepairPrompt(prompt: string, schema: ZodType, error: z.ZodError): string {
+export function buildRepairPrompt(
+  prompt: string,
+  schema: ZodType,
+  error: z.ZodError,
+): string {
   return [
     buildPromptText(prompt, schema),
     "",
@@ -309,7 +331,11 @@ export class OpenCodeProvider implements LlmProvider {
     }
 
     let lastError: unknown;
-    const failures: Array<{ model: ModelRef; rateLimited: boolean; summary: string }> = [];
+    const failures: Array<{
+      model: ModelRef;
+      rateLimited: boolean;
+      summary: string;
+    }> = [];
     for (const model of this.models) {
       let text = buildPromptText(prompt, schema);
 
@@ -363,10 +389,7 @@ export class OpenCodeProvider implements LlmProvider {
   }
 
   /** One create → prompt → wait → read cycle against a single model. */
-  private async runSession(
-    text: string,
-    model: ModelRef,
-  ): Promise<unknown> {
+  private async runSession(text: string, model: ModelRef): Promise<unknown> {
     const session = await this.call(() =>
       this.client.session.create({
         title: "api: generateJson",
@@ -376,7 +399,9 @@ export class OpenCodeProvider implements LlmProvider {
     );
 
     try {
-      await this.call(() => this.client.session.prompt({ sessionID: session.id, text }));
+      await this.call(() =>
+        this.client.session.prompt({ sessionID: session.id, text }),
+      );
       await withRetry(
         () =>
           this.client.session.wait(
@@ -458,5 +483,7 @@ function sliceToOuterBrackets(raw: string): string {
     ...[raw.indexOf("{"), raw.indexOf("[")].filter((index) => index !== -1),
   );
   const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
-  return Number.isFinite(start) && end > start ? raw.slice(start, end + 1) : raw;
+  return Number.isFinite(start) && end > start
+    ? raw.slice(start, end + 1)
+    : raw;
 }

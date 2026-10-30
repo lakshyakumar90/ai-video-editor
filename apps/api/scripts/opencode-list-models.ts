@@ -7,7 +7,7 @@
 import "dotenv/config";
 import { OpenCode } from "@opencode/client";
 import path from "node:path";
-import { openCodePreferredModels } from "../src/config/env.js";
+import { LLM_MODEL_FALLBACK } from "../src/services/llm-registry.js";
 
 const auth =
   "Basic " +
@@ -36,12 +36,12 @@ for (const model of models) {
   );
 }
 
-console.log(`\npreferred order (from OPENCODE_MODEL_PREFERENCE):`);
+console.log(`\npreferred order (from OPENCODE_MODEL_PREFERENCE, via llm-registry):`);
 const available = new Set(
   models.map((model) => `${model.providerID}/${model.id}`),
 );
 let missing = 0;
-openCodePreferredModels.forEach((model, index) => {
+LLM_MODEL_FALLBACK.openCode().forEach((model, index) => {
   const ref = `${model.providerID}/${model.modelID}`;
   const found = available.has(ref);
   if (!found) missing++;

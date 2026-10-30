@@ -9,7 +9,8 @@
     "start": "tsx src/server.ts",
     "test": "vitest run",
     "lint": "prettier --check \"src/**/*.ts\"",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "llm:scene-plan": "tsx scripts/generate-scene-plan.ts"
   },
   "keywords": [],
   "author": "",
