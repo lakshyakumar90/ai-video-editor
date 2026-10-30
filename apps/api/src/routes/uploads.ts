@@ -81,7 +81,11 @@ export function uploadsRouter(): Router {
         // Stream straight to disk: a 100 MB clip is never buffered in
         // memory, and the hard cap applies even without a declared
         // content-length.
-        await pipeline(req, byteCounter, createWriteStream(filePath, { flags: "wx" }));
+        await pipeline(
+          req,
+          byteCounter,
+          createWriteStream(filePath, { flags: "wx" }),
+        );
       } catch (error) {
         // A failed upload must never leave a partial file behind.
         await rm(filePath, { force: true });

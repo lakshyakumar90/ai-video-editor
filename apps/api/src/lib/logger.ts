@@ -32,11 +32,13 @@ const redaction: LoggerOptions["redact"] = {
 };
 
 /** Creates a pino logger with secret redaction always enabled. */
-export function createLogger(options: {
-  level?: LoggerOptions["level"];
-  destination?: DestinationStream;
-  base?: LoggerOptions["base"];
-} = {}): Logger {
+export function createLogger(
+  options: {
+    level?: LoggerOptions["level"];
+    destination?: DestinationStream;
+    base?: LoggerOptions["base"];
+  } = {},
+): Logger {
   return pino(
     {
       level: options.level ?? "info",

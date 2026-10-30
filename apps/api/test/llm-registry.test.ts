@@ -9,7 +9,11 @@ import {
   getLlmProvider,
   llmProviders,
 } from "../src/services/llm-registry.js";
-import { scenePlansSchema, type ScenePlans } from "@repo/shared";
+import {
+  generateScenePlansResponseSchema,
+  scenePlansSchema,
+  type ScenePlans,
+} from "@repo/shared";
 
 const ENV_KEYS = [
   "LLM_PROVIDER",
@@ -126,5 +130,14 @@ describe("capabilities", () => {
     const provider = getLlmProvider("fake");
     const plan = await provider.generateJson("a tokyo night edit", scenePlansSchema);
     expect(plan).toEqual(fakeSceneScript);
+  });
+
+  it("returns the scene-plan response envelope used by the CLI and API", async () => {
+    const provider = getLlmProvider("fake");
+    const response = await provider.generateJson(
+      "a tokyo night edit",
+      generateScenePlansResponseSchema,
+    );
+    expect(response).toEqual({ scenes: fakeSceneScript });
   });
 });

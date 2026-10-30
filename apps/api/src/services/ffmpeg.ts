@@ -85,7 +85,11 @@ export function runProcess(
         error.code === "ENOENT"
           ? `(command "${command}" not found; it must be installed and on PATH)`
           : "";
-      reject(new Error(`failed to start "${command}": ${error.message} ${hint}`, { cause: error }));
+      reject(
+        new Error(`failed to start "${command}": ${error.message} ${hint}`, {
+          cause: error,
+        }),
+      );
     });
 
     child.on("close", (code: number | null) => {
@@ -96,7 +100,9 @@ export function runProcess(
       if (code !== 0) {
         // ffmpeg writes its human-readable diagnostics to stderr
         reject(
-          new Error(`"${command}" exited with code ${code}: ${stderrTail(stderrText)}`),
+          new Error(
+            `"${command}" exited with code ${code}: ${stderrTail(stderrText)}`,
+          ),
         );
         return;
       }

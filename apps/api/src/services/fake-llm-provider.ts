@@ -33,6 +33,11 @@ export class FakeLlmProvider implements LlmProvider {
     if (prompt.length === 0) {
       throw new Error("FakeLlmProvider requires a non-empty prompt");
     }
-    return schema.parse(fakeSceneScript);
+    const plan = schema.safeParse(fakeSceneScript);
+    if (plan.success) return plan.data;
+
+    // The CLI and API use the response envelope, while lower-level scene
+    // planning callers may validate the scene array directly.
+    return schema.parse({ scenes: fakeSceneScript });
   }
 }
