@@ -23,6 +23,11 @@ const envSchema = z.object({
   UPLOAD_DIR: z.string().min(1),
   UPLOAD_MAX_BYTES: z.coerce.number().int().min(1).default(104_857_600),
 
+  // Deployment mode (docs/decision-deployment.md):
+  // - "self-hosted": CLI LLM providers (OpenCode server, Codex CLI) allowed
+  // - "hosted": CLI providers never; users bring their own API keys
+  DEPLOYMENT_MODE: z.enum(["self-hosted", "hosted"]).default("self-hosted"),
+
   // Master key used to encrypt stored user API keys (32 random bytes,
   // hex-encoded). Users in hosted deployments bring their own API keys
   // (docs/decision-deployment.md); those keys are only ever persisted
