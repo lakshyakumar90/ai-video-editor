@@ -5,6 +5,9 @@ import {
 } from "../src/services/fake-llm-provider.js";
 import { OpenCodeProvider } from "../src/services/opencode-llm-provider.js";
 import { OpenAiCompatibleProvider } from "../src/services/hosted-llm-provider.js";
+import { OpenAiProvider } from "../src/services/openai-llm-provider.js";
+import { AnthropicProvider } from "../src/services/anthropic-llm-provider.js";
+import { GeminiProvider } from "../src/services/gemini-llm-provider.js";
 import {
   LLM_MODEL_FALLBACK,
   ProviderResolutionError,
@@ -87,7 +90,7 @@ describe("getLlmProvider", () => {
 
   it("names the available providers in the unknown-provider error", () => {
     expect(() => getLlmProvider("codex-not-registered")).toThrowError(
-      /unknown LLM provider "codex-not-registered" - available providers: fake, opencode, hosted-openai/,
+      /unknown LLM provider "codex-not-registered" - available providers: fake, opencode, hosted-openai, openai, anthropic, gemini/,
     );
   });
 
@@ -142,6 +145,30 @@ describe("capabilities", () => {
       toolCalling: true,
       streaming: true,
     });
+    expect(llmProviders.get("opencode")?.capabilities.structuredOutput).toBe(
+      "json-in-text",
+    );
+    expect(llmProviders.get("openai")?.capabilities).toMatchObject({
+      structuredOutput: "json-schema",
+      toolCalling: true,
+      vision: true,
+      streaming: true,
+    });
+    expect(llmProviders.get("anthropic")?.capabilities).toMatchObject({
+      structuredOutput: "json-in-text",
+      toolCalling: true,
+      vision: true,
+      streaming: true,
+    });
+    expect(llmProviders.get("gemini")?.capabilities).toMatchObject({
+      structuredOutput: "json-schema",
+      toolCalling: true,
+      vision: true,
+      streaming: true,
+    });
+    expect(getLlmProvider("openai")).toBeInstanceOf(OpenAiProvider);
+    expect(getLlmProvider("anthropic")).toBeInstanceOf(AnthropicProvider);
+    expect(getLlmProvider("gemini")).toBeInstanceOf(GeminiProvider);
   });
 
   it("delivers on the declared capability: schema-validated JSON from text", async () => {

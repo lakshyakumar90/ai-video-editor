@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 5/18
+**Progress:** 8/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -17,10 +17,10 @@ instances and secrets must not be shared across users.
 - [x] Build a generic OpenAI-compatible adapter and OpenRouter preset.
 - [x] Add Groq, Together, DeepSeek, Ollama, LM Studio, and vLLM presets using
       the compatible adapter.
-- [ ] Add an Anthropic SDK adapter with messages, tools, and image input.
-- [ ] Add a Google GenAI SDK adapter with JSON schema, function calling, image,
+- [x] Add an Anthropic SDK adapter with messages, tools, and image input.
+- [x] Add a Google GenAI SDK adapter with JSON schema, function calling, image,
       and video input.
-- [ ] Add an OpenAI SDK adapter with JSON schema and tool calls.
+- [x] Add an OpenAI SDK adapter with JSON schema and tool calls.
 - [ ] Add a Codex CLI adapter using `codex exec` in an empty temporary
       directory, default read-only sandbox, and saved login or `CODEX_API_KEY`.
 - [ ] Mark Codex and OpenCode as local CLI providers; reject them in hosted

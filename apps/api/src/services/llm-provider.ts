@@ -26,6 +26,7 @@ export interface ProviderUsage {
 export interface LlmCallOptions {
   apiKey?: string;
   signal?: AbortSignal;
+  maxOutputTokens?: number;
   onUsage?: (usage: ProviderUsage) => void;
 }
 
@@ -45,6 +46,11 @@ export interface LlmToolCall {
 export interface ImageInput {
   data: string | Uint8Array;
   mediaType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+}
+
+export interface VideoInput {
+  data: string | Uint8Array;
+  mediaType: string;
 }
 
 export class UnsupportedCapabilityError extends Error {
@@ -77,6 +83,12 @@ export interface LlmProvider {
 
   describeImage(
     image: ImageInput,
+    prompt?: string,
+    options?: LlmCallOptions,
+  ): Promise<string>;
+
+  describeVideo(
+    video: VideoInput,
     prompt?: string,
     options?: LlmCallOptions,
   ): Promise<string>;
@@ -148,6 +160,14 @@ export abstract class LlmProviderBase implements LlmProvider {
     _options?: LlmCallOptions,
   ): Promise<string> {
     throw new UnsupportedCapabilityError("vision");
+  }
+
+  async describeVideo(
+    _video: VideoInput,
+    _prompt = "Describe this video.",
+    _options?: LlmCallOptions,
+  ): Promise<string> {
+    throw new UnsupportedCapabilityError("video input");
   }
 }
 

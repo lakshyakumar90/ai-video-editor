@@ -7,6 +7,9 @@ import {
 } from "./llm-provider.js";
 import { FakeLlmProvider } from "./fake-llm-provider.js";
 import { OpenCodeProvider } from "./opencode-llm-provider.js";
+import { OpenAiProvider } from "./openai-llm-provider.js";
+import { AnthropicProvider } from "./anthropic-llm-provider.js";
+import { GeminiProvider } from "./gemini-llm-provider.js";
 import {
   OPENAI_COMPATIBLE_PRESETS,
   OpenAiCompatibleProvider,
@@ -52,7 +55,8 @@ export interface LlmProviderDescriptor {
   create(): LlmProvider;
 }
 
-export type LlmProviderName = "fake" | "opencode" | "hosted-openai";
+export type LlmProviderName =
+  "fake" | "opencode" | "hosted-openai" | "openai" | "anthropic" | "gemini";
 
 export class ProviderResolutionError extends Error {
   constructor(message: string) {
@@ -137,6 +141,59 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
           }
           return new OpenAiCompatibleProvider({ baseUrl, model });
         },
+      },
+    ],
+    [
+      "openai",
+      {
+        name: "openai",
+        description: "Official OpenAI Responses API adapter",
+        deployment: "hosted",
+        capabilities: {
+          structuredOutput: "json-schema",
+          toolCalling: true,
+          vision: true,
+          streaming: true,
+          maxContext: null,
+        },
+        create: () =>
+          new OpenAiProvider(process.env.OPENAI_MODEL ?? "gpt-4.1-mini"),
+      },
+    ],
+    [
+      "anthropic",
+      {
+        name: "anthropic",
+        description: "Official Anthropic Messages API adapter",
+        deployment: "hosted",
+        capabilities: {
+          structuredOutput: "json-in-text",
+          toolCalling: true,
+          vision: true,
+          streaming: true,
+          maxContext: null,
+        },
+        create: () =>
+          new AnthropicProvider(
+            process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+          ),
+      },
+    ],
+    [
+      "gemini",
+      {
+        name: "gemini",
+        description: "Official Google GenAI adapter",
+        deployment: "hosted",
+        capabilities: {
+          structuredOutput: "json-schema",
+          toolCalling: true,
+          vision: true,
+          streaming: true,
+          maxContext: null,
+        },
+        create: () =>
+          new GeminiProvider(process.env.GEMINI_MODEL ?? "gemini-2.5-flash"),
       },
     ],
   ]);

@@ -42,7 +42,14 @@ const envSchema = z.object({
 
   // LLM provider selection lives in the registry (llm-registry.ts).
   LLM_PROVIDER: z
-    .enum(["fake", "opencode", "hosted-openai"])
+    .enum([
+      "fake",
+      "opencode",
+      "hosted-openai",
+      "openai",
+      "anthropic",
+      "gemini",
+    ])
     .default("opencode"),
 
   // Hosted OpenAI-compatible provider (bring-your-own-key; only needed
