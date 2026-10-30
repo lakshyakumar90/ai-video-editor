@@ -13,6 +13,7 @@ node_modules
 .env.production.local
 
 # Local Better Auth sessions and encrypted LLM key database
+apps/api/data/invideo.sqlite*
 apps/api/uploads/invideo.sqlite*
 
 # Testing

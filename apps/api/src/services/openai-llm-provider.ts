@@ -25,7 +25,11 @@ const OPENAI_CAPABILITIES: ProviderCapabilities = {
 /** Official OpenAI Responses API adapter. The key is scoped to each request. */
 export class OpenAiProvider extends LlmProviderBase {
   readonly capabilities = OPENAI_CAPABILITIES;
-  constructor(readonly model: string) {
+  constructor(
+    readonly model: string,
+    private readonly clientFactory: (apiKey: string) => OpenAI = (apiKey) =>
+      new OpenAI({ apiKey }),
+  ) {
     super();
   }
 
@@ -137,9 +141,11 @@ export class OpenAiProvider extends LlmProviderBase {
         stream: true,
         ...(options?.signal ? { signal: options.signal } : {}),
       });
-      for await (const event of stream)
+      for await (const event of stream) {
         if (event.type === "response.output_text.delta") yield event.delta;
-      // Streaming usage is provider/model dependent; the final event is not consistently populated in SDK types.
+        if (event.type === "response.completed")
+          this.usage(options, event.response.usage);
+      }
     } catch (error) {
       throw mapProviderError("openai", error);
     }
@@ -185,7 +191,7 @@ export class OpenAiProvider extends LlmProviderBase {
         "missing_key",
         "no API key is configured for openai",
       );
-    return new OpenAI({ apiKey: options.apiKey });
+    return this.clientFactory(options.apiKey);
   }
   private usage(
     options: LlmCallOptions | undefined,

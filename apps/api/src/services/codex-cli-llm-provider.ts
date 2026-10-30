@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z, type ZodType } from "zod";
 import {
   JSON_IN_TEXT_CAPABILITIES,
   LlmProviderBase,
+  reportUsage,
   type LlmCallOptions,
   type ProviderCapabilities,
 } from "./llm-provider.js";
@@ -16,7 +17,20 @@ export interface CodexCliOptions {
   model?: string;
   timeoutMs?: number;
   env?: NodeJS.ProcessEnv;
+  runner?: CodexCliRunner;
 }
+
+export type CodexCliRunner = (
+  executable: string,
+  args: string[],
+  input: string,
+  options: {
+    cwd: string;
+    timeoutMs: number;
+    signal?: AbortSignal;
+    env: NodeJS.ProcessEnv;
+  },
+) => Promise<{ stdout: string }>;
 
 /** Codex CLI adapter. Every request runs read-only in a fresh empty directory. */
 export class CodexCliProvider extends LlmProviderBase {
@@ -38,9 +52,11 @@ export class CodexCliProvider extends LlmProviderBase {
         "invalid_request",
         "prompt must not be empty",
       );
-    const workdir = await mkdtemp(path.join(os.tmpdir(), "codex-llm-"));
-    const schemaPath = path.join(workdir, "response-schema.json");
-    const outputPath = path.join(workdir, "final-message.txt");
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "codex-llm-"));
+    const workdir = path.join(tempRoot, "workspace");
+    await mkdir(workdir);
+    const schemaPath = path.join(tempRoot, "response-schema.json");
+    const outputPath = path.join(tempRoot, "final-message.txt");
     try {
       await writeFile(
         schemaPath,
@@ -70,16 +86,22 @@ export class CodexCliProvider extends LlmProviderBase {
       ];
       if (this.config.model) args.push("--model", this.config.model);
       args.push("-");
-      const { stdout } = await runCli(this.executable, args, instruction, {
-        cwd: workdir,
-        timeoutMs: this.config.timeoutMs ?? 120_000,
-        signal: options?.signal,
-        env: {
-          ...process.env,
-          ...this.config.env,
-          ...(options?.apiKey ? { CODEX_API_KEY: options.apiKey } : {}),
+      const { stdout } = await (this.config.runner ?? runCli)(
+        this.executable,
+        args,
+        instruction,
+        {
+          cwd: workdir,
+          timeoutMs: this.config.timeoutMs ?? 120_000,
+          signal: options?.signal,
+          env: {
+            ...process.env,
+            ...this.config.env,
+            ...(options?.apiKey ? { CODEX_API_KEY: options.apiKey } : {}),
+          },
         },
-      });
+      );
+      reportCodexUsage(stdout, options);
       let message: string;
       try {
         message = await readFile(outputPath, "utf8");
@@ -90,7 +112,7 @@ export class CodexCliProvider extends LlmProviderBase {
     } catch (error) {
       throw mapProviderError("codex", error);
     } finally {
-      await rm(workdir, { recursive: true, force: true });
+      await rm(tempRoot, { recursive: true, force: true });
     }
   }
 }
@@ -182,4 +204,24 @@ function parseJson(text: string): unknown {
       { cause: error },
     );
   }
+}
+
+function reportCodexUsage(output: string, options?: LlmCallOptions): void {
+  let usage: { input_tokens?: number; output_tokens?: number } | undefined;
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event = JSON.parse(line) as {
+        type?: string;
+        usage?: { input_tokens?: number; output_tokens?: number };
+      };
+      if (event.type === "turn.completed" && event.usage) usage = event.usage;
+    } catch {
+      // Ignore non-JSON diagnostics.
+    }
+  }
+  if (usage)
+    reportUsage(options, {
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+    });
 }

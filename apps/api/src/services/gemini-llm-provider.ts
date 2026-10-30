@@ -12,7 +12,7 @@ import {
   type VideoInput,
 } from "./llm-provider.js";
 import { LlmProviderError, mapProviderError } from "./llm-provider-error.js";
-import { parseJsonReply } from "./hosted-llm-provider.js";
+import { parseLlmJson } from "./llm-json.js";
 
 const GEMINI_CAPABILITIES: ProviderCapabilities = {
   structuredOutput: "json-schema",
@@ -25,7 +25,12 @@ const GEMINI_CAPABILITIES: ProviderCapabilities = {
 /** Official Google GenAI SDK adapter; credentials are request-scoped. */
 export class GeminiProvider extends LlmProviderBase {
   readonly capabilities = GEMINI_CAPABILITIES;
-  constructor(readonly model: string) {
+  constructor(
+    readonly model: string,
+    private readonly clientFactory: (apiKey: string) => GoogleGenAI = (
+      apiKey,
+    ) => new GoogleGenAI({ apiKey }),
+  ) {
     super();
   }
 
@@ -70,7 +75,7 @@ export class GeminiProvider extends LlmProviderBase {
         },
       });
       this.usage(options, response.usageMetadata);
-      return schema.parse(parseJsonReply(response.text ?? ""));
+      return schema.parse(parseLlmJson(response.text ?? "", "gemini"));
     } catch (error) {
       throw mapProviderError("gemini", error);
     }
@@ -131,10 +136,14 @@ export class GeminiProvider extends LlmProviderBase {
         contents: prompt,
         config: options?.signal ? { abortSignal: options.signal } : undefined,
       });
+      let finalUsage:
+        | { promptTokenCount?: number; candidatesTokenCount?: number }
+        | undefined;
       for await (const chunk of stream) {
         if (chunk.text) yield chunk.text;
-        this.usage(options, chunk.usageMetadata);
+        finalUsage = chunk.usageMetadata ?? finalUsage;
       }
+      this.usage(options, finalUsage);
     } catch (error) {
       throw mapProviderError("gemini", error);
     }
@@ -220,7 +229,7 @@ export class GeminiProvider extends LlmProviderBase {
         "missing_key",
         "no API key is configured for gemini",
       );
-    return new GoogleGenAI({ apiKey: options.apiKey });
+    return this.clientFactory(options.apiKey);
   }
   private usage(
     options: LlmCallOptions | undefined,

@@ -12,7 +12,7 @@ import {
   type ProviderCapabilities,
 } from "./llm-provider.js";
 import { LlmProviderError, mapProviderError } from "./llm-provider-error.js";
-import { parseJsonReply } from "./hosted-llm-provider.js";
+import { parseLlmJson } from "./llm-json.js";
 
 const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
   structuredOutput: "json-in-text",
@@ -25,7 +25,11 @@ const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
 /** Official Anthropic Messages SDK adapter with request-scoped BYOK keys. */
 export class AnthropicProvider extends LlmProviderBase {
   readonly capabilities = ANTHROPIC_CAPABILITIES;
-  constructor(readonly model: string) {
+  constructor(
+    readonly model: string,
+    private readonly clientFactory: (apiKey: string) => Anthropic = (apiKey) =>
+      new Anthropic({ apiKey }),
+  ) {
     super();
   }
 
@@ -72,7 +76,7 @@ export class AnthropicProvider extends LlmProviderBase {
         .filter((part) => part.type === "text")
         .map((part) => part.text)
         .join("");
-      return schema.parse(parseJsonReply(text));
+      return schema.parse(parseLlmJson(text, "anthropic"));
     } catch (error) {
       throw mapProviderError("anthropic", error);
     }
@@ -189,7 +193,7 @@ export class AnthropicProvider extends LlmProviderBase {
         "missing_key",
         "no API key is configured for anthropic",
       );
-    return new Anthropic({ apiKey: options.apiKey });
+    return this.clientFactory(options.apiKey);
   }
   private usage(
     options: LlmCallOptions | undefined,

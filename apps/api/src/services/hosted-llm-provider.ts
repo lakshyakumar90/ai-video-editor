@@ -11,6 +11,7 @@ import {
   type ProviderCapabilities,
 } from "./llm-provider.js";
 import { LlmProviderError, mapProviderError } from "./llm-provider-error.js";
+import { parseLlmJson } from "./llm-json.js";
 
 export type OpenAiCompatiblePresetId =
   | "openai-compatible"
@@ -405,17 +406,5 @@ interface ChatCompletionResponse {
 }
 
 export function parseJsonReply(text: string): unknown {
-  let raw = text.trim();
-  const fenced = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/i);
-  if (fenced?.[1]) raw = fenced[1].trim();
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    throw new LlmProviderError(
-      "openai-compatible",
-      "invalid_response",
-      "provider did not return valid JSON",
-      { cause: error },
-    );
-  }
+  return parseLlmJson(text, "openai-compatible");
 }

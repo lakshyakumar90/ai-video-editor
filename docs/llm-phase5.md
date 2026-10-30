@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
-**Status:** In progress  
-**Progress:** 17/18
+**Status:** Complete  
+**Progress:** 18/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -38,7 +38,7 @@ instances and secrets must not be shared across users.
       and readable failure.
 - [x] Record tokens and estimated cost per call, tagged with provider, model,
       and whose key paid.
-- [ ] Add a provider contract suite for JSON output, tools, error mapping, and
+- [x] Add a provider contract suite for JSON output, tools, error mapping, and
       timeouts; use fakes and optional live smoke tests.
 
 ## Identity dependency
