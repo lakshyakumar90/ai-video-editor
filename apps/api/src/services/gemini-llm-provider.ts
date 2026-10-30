@@ -29,6 +29,28 @@ export class GeminiProvider extends LlmProviderBase {
     super();
   }
 
+  async healthProbe(options?: LlmCallOptions): Promise<void> {
+    try {
+      const response = await this.client(options).models.generateContent({
+        model: this.model,
+        contents: "Reply with ok.",
+        config: {
+          maxOutputTokens: 1,
+          ...(options?.signal ? { abortSignal: options.signal } : {}),
+        },
+      });
+      this.usage(options, response.usageMetadata);
+      if (!response.text)
+        throw new LlmProviderError(
+          "gemini",
+          "invalid_response",
+          "Gemini health probe returned no output",
+        );
+    } catch (error) {
+      throw mapProviderError("gemini", error);
+    }
+  }
+
   async generateJson<T>(
     prompt: string,
     schema: ZodType<T>,

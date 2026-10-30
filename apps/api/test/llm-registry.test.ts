@@ -90,8 +90,15 @@ describe("getLlmProvider", () => {
 
   it("names the available providers in the unknown-provider error", () => {
     expect(() => getLlmProvider("codex-not-registered")).toThrowError(
-      /unknown LLM provider "codex-not-registered" - available providers: fake, opencode, hosted-openai, openai, anthropic, gemini, codex/,
+      /unknown LLM provider "codex-not-registered" - available providers:/,
     );
+    expect(() => getLlmProvider("openrouter")).not.toThrow();
+    expect(() => getLlmProvider("groq")).not.toThrow();
+    expect(() => getLlmProvider("together")).not.toThrow();
+    expect(() => getLlmProvider("deepseek")).not.toThrow();
+    expect(() => getLlmProvider("ollama")).not.toThrow();
+    expect(() => getLlmProvider("lm-studio")).not.toThrow();
+    expect(() => getLlmProvider("vllm")).not.toThrow();
   });
 
   it("refuses CLI-backed providers in hosted deployments", () => {
@@ -131,6 +138,9 @@ describe("capabilities", () => {
   it("declares every provider's complete capability contract", async () => {
     const descriptors = describeLlmProviders();
     for (const descriptor of descriptors) {
+      expect(descriptor.id).toBeTruthy();
+      expect(descriptor.kind).toBeTruthy();
+      expect(descriptor.healthProbe).toBe(true);
       expect(descriptor.capabilities).toHaveProperty("structuredOutput");
       expect(descriptor.capabilities).toHaveProperty("toolCalling");
       expect(descriptor.capabilities).toHaveProperty("vision");
@@ -170,6 +180,10 @@ describe("capabilities", () => {
     expect(getLlmProvider("openai")).toBeInstanceOf(OpenAiProvider);
     expect(getLlmProvider("anthropic")).toBeInstanceOf(AnthropicProvider);
     expect(getLlmProvider("gemini")).toBeInstanceOf(GeminiProvider);
+    expect(
+      describeLlmProviders().find(({ id }) => id === "openrouter")
+        ?.defaultModel,
+    ).toBe("openai/gpt-4o-mini");
   });
 
   it("delivers on the declared capability: schema-validated JSON from text", async () => {

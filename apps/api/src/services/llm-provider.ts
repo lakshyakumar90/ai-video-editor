@@ -67,6 +67,8 @@ export class UnsupportedCapabilityError extends Error {
 export interface LlmProvider {
   readonly capabilities: ProviderCapabilities;
 
+  healthProbe?(options?: LlmCallOptions): Promise<void>;
+
   generateJson<T>(
     prompt: string,
     schema: ZodType<T>,

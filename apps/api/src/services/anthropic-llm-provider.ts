@@ -29,6 +29,26 @@ export class AnthropicProvider extends LlmProviderBase {
     super();
   }
 
+  async healthProbe(options?: LlmCallOptions): Promise<void> {
+    try {
+      const response = await this.client(options).messages.create({
+        model: this.model,
+        max_tokens: 1,
+        messages: [{ role: "user", content: "Reply with ok." }],
+        ...(options?.signal ? { signal: options.signal } : {}),
+      });
+      this.usage(options, response.usage);
+      if (!response.content.some((part) => part.type === "text"))
+        throw new LlmProviderError(
+          "anthropic",
+          "invalid_response",
+          "Anthropic health probe returned no output",
+        );
+    } catch (error) {
+      throw mapProviderError("anthropic", error);
+    }
+  }
+
   async generateJson<T>(
     prompt: string,
     schema: ZodType<T>,

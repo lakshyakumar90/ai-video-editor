@@ -29,6 +29,26 @@ export class OpenAiProvider extends LlmProviderBase {
     super();
   }
 
+  async healthProbe(options?: LlmCallOptions): Promise<void> {
+    try {
+      const response = await this.client(options).responses.create({
+        model: this.model,
+        input: "Reply with ok.",
+        max_output_tokens: 1,
+        ...(options?.signal ? { signal: options.signal } : {}),
+      });
+      this.usage(options, response.usage);
+      if (!response.output_text)
+        throw new LlmProviderError(
+          "openai",
+          "invalid_response",
+          "OpenAI health probe returned no output",
+        );
+    } catch (error) {
+      throw mapProviderError("openai", error);
+    }
+  }
+
   async generateJson<T>(
     prompt: string,
     schema: ZodType<T>,

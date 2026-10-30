@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { ZodType } from "zod";
+import { z } from "zod";
 import {
   SUPPORTED_LLM_CAPABILITIES,
   type LlmCapabilities,
@@ -44,6 +45,12 @@ export interface ModelRef {
 export type ProviderDeployment = "self-hosted" | "hosted" | "any";
 
 export interface LlmProviderDescriptor {
+  readonly id?: LlmProviderName;
+  readonly kind?: "hosted-key" | "local-cli" | "test";
+  readonly defaultModel?: string | null;
+  readonly healthProbe?: (
+    options?: import("./llm-provider.js").LlmCallOptions,
+  ) => Promise<void>;
   /** Stable name used by `LLM_PROVIDER`. */
   readonly name: LlmProviderName;
   readonly description: string;
@@ -61,6 +68,14 @@ export type LlmProviderName =
   | "opencode"
   | "codex"
   | "hosted-openai"
+  | "openai-compatible"
+  | "openrouter"
+  | "groq"
+  | "together"
+  | "deepseek"
+  | "ollama"
+  | "lm-studio"
+  | "vllm"
   | "openai"
   | "anthropic"
   | "gemini";
@@ -92,6 +107,78 @@ function parseProviderModelEntries(value: string): ModelRef[] {
 
 /** Workspace directory OpenCode sessions operate in (the repo root). */
 const projectDirectory = path.resolve(import.meta.dirname, "../../..");
+
+const compatibleDefaults: Record<string, string> = {
+  openrouter: "openai/gpt-4o-mini",
+  groq: "llama-3.3-70b-versatile",
+  together: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  deepseek: "deepseek-chat",
+  ollama: "llama3.2",
+  "lm-studio": "local-model",
+  vllm: "default",
+};
+
+function createCompatiblePresetDescriptors(): Array<
+  [LlmProviderName, LlmProviderDescriptor]
+> {
+  const presets = Object.keys(OPENAI_COMPATIBLE_PRESETS) as Array<
+    keyof typeof OPENAI_COMPATIBLE_PRESETS
+  >;
+  return presets.map((id) => {
+    const envPrefix = id.replaceAll("-", "_").toUpperCase();
+    const model =
+      process.env[`${envPrefix}_MODEL`] ??
+      (id === "openai-compatible" ? process.env.LLM_HOSTED_MODEL : undefined) ??
+      compatibleDefaults[id] ??
+      "";
+    const baseUrl =
+      process.env[`${envPrefix}_BASE_URL`] ??
+      (id === "openai-compatible"
+        ? process.env.LLM_HOSTED_BASE_URL
+        : undefined) ??
+      OPENAI_COMPATIBLE_PRESETS[id].baseUrl;
+    const name = id as LlmProviderName;
+    return [
+      name,
+      {
+        name,
+        id: name,
+        kind: ["ollama", "lm-studio", "vllm"].includes(id)
+          ? "local-cli"
+          : "hosted-key",
+        defaultModel: model || null,
+        description: `${id} OpenAI-compatible preset`,
+        deployment: ["ollama", "lm-studio", "vllm"].includes(id)
+          ? "self-hosted"
+          : "hosted",
+        capabilities: OPENAI_COMPATIBLE_PRESETS[id].capabilities,
+        healthProbe: async (options) => {
+          const provider = new OpenAiCompatibleProvider({
+            baseUrl,
+            model: model || "",
+            providerId: id,
+          });
+          await provider.healthProbe(options);
+        },
+        create: () => {
+          if (!model)
+            throw new ProviderResolutionError(
+              `provider "${id}" needs ${envPrefix}_MODEL`,
+            );
+          if (!baseUrl)
+            throw new ProviderResolutionError(
+              `provider "${id}" needs ${envPrefix}_BASE_URL`,
+            );
+          return new OpenAiCompatibleProvider({
+            baseUrl,
+            model,
+            providerId: id,
+          });
+        },
+      },
+    ];
+  });
+}
 
 export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
   new Map([
@@ -150,6 +237,7 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
         },
       },
     ],
+    ...createCompatiblePresetDescriptors(),
     [
       "openai",
       {
@@ -257,23 +345,73 @@ export function getLlmProvider(reference?: string): LlmProvider {
   return descriptor.create();
 }
 
+/** A minimal credential-aware probe through the provider's native API. */
+export async function probeLlmProvider(
+  reference: string,
+  options?: import("./llm-provider.js").LlmCallOptions,
+): Promise<void> {
+  const provider = getLlmProvider(reference);
+  if (provider.healthProbe) return provider.healthProbe(options);
+  await provider.generateJson("Reply with the JSON string ok.", z.string(), {
+    ...options,
+    maxOutputTokens: 1,
+  });
+}
+
 /** Registry diagnostics for health endpoints and CLI tooling. */
 export function describeLlmProviders(): Array<{
+  id: LlmProviderName;
+  kind: "hosted-key" | "local-cli" | "test";
   name: LlmProviderName;
   description: string;
   deployment: ProviderDeployment;
   capabilities: LlmCapabilities;
+  defaultModel: string | null;
+  healthProbe: boolean;
   models?: ModelRef[];
 }> {
   return [...llmProviders.values()].map(
-    ({ name, description, deployment, capabilities, models }) => ({
+    ({
+      name,
+      id,
+      kind,
+      defaultModel,
+      healthProbe,
+      description,
+      deployment,
+      capabilities,
+      models,
+    }) => ({
+      id: id ?? name,
+      kind:
+        kind ??
+        (name === "fake"
+          ? "test"
+          : deployment === "self-hosted"
+            ? "local-cli"
+            : "hosted-key"),
       name,
       description,
       deployment,
       capabilities,
+      defaultModel: defaultModel ?? registryDefaultModel(name),
+      healthProbe:
+        healthProbe !== undefined ||
+        llmProviders.get(name)?.create !== undefined,
       ...(models !== undefined ? { models } : {}),
     }),
   );
+}
+
+function registryDefaultModel(name: LlmProviderName): string | null {
+  const configured: Partial<Record<LlmProviderName, string | undefined>> = {
+    "hosted-openai": process.env.LLM_HOSTED_MODEL,
+    openai: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+    anthropic: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+    gemini: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
+    codex: process.env.CODEX_MODEL,
+  };
+  return configured[name] ?? null;
 }
 
 /** Re-exported so consumers never import `ZodType` handling themselves. */

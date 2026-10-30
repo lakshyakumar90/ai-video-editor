@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 11/18
+**Progress:** 12/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -25,7 +25,7 @@ instances and secrets must not be shared across users.
       directory, default read-only sandbox, and saved login or `CODEX_API_KEY`.
 - [x] Mark Codex and OpenCode as local CLI providers; reject them in hosted
       mode.
-- [ ] Expand the registry with provider id, kind, capabilities, default model,
+- [x] Expand the registry with provider id, kind, capabilities, default model,
       and health probe.
 - [ ] Route script planning, edit-agent, vision, and translation by task.
 - [ ] Add per-task fallback for rate limits, quota errors, and timeouts; never
