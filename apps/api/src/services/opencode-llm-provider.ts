@@ -1,6 +1,10 @@
 import { OpenCode, type OpenCodeClient } from "@opencode/client";
 import { z, type ZodType } from "zod";
-import type { LlmProvider } from "./llm-provider.js";
+import {
+  JSON_IN_TEXT_CAPABILITIES,
+  LlmProviderBase,
+  type ProviderCapabilities,
+} from "./llm-provider.js";
 
 /** A model reference as used in session creation. */
 export interface ModelRef {
@@ -291,7 +295,8 @@ export function isRateLimitError(error: unknown): boolean {
   );
 }
 
-export class OpenCodeProvider implements LlmProvider {
+export class OpenCodeProvider extends LlmProviderBase {
+  readonly capabilities: ProviderCapabilities = JSON_IN_TEXT_CAPABILITIES;
   private readonly client: OpenCodeClient;
   private readonly models: ModelRef[];
   private readonly directory: string;
@@ -301,6 +306,7 @@ export class OpenCodeProvider implements LlmProvider {
   private readonly callTimeoutMs: number;
 
   constructor(options: OpenCodeProviderOptions) {
+    super();
     const auth =
       "Basic " + Buffer.from(`opencode:${options.password}`).toString("base64");
     this.client = OpenCode.make({

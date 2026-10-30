@@ -1,6 +1,10 @@
 import type { ZodType } from "zod";
 import { scenePlansSchema, type ScenePlans } from "@repo/shared";
-import type { LlmProvider } from "./llm-provider.js";
+import {
+  JSON_IN_TEXT_CAPABILITIES,
+  LlmProviderBase,
+  type ProviderCapabilities,
+} from "./llm-provider.js";
 
 /** Hardcoded 3-scene script returned by {@link FakeLlmProvider}. */
 export const fakeSceneScript: ScenePlans = scenePlansSchema.parse([
@@ -28,7 +32,9 @@ export const fakeSceneScript: ScenePlans = scenePlansSchema.parse([
  * `LlmProvider` test and development double: ignores the prompt and returns
  * {@link fakeSceneScript} validated against whatever schema is passed in.
  */
-export class FakeLlmProvider implements LlmProvider {
+export class FakeLlmProvider extends LlmProviderBase {
+  readonly capabilities: ProviderCapabilities = JSON_IN_TEXT_CAPABILITIES;
+
   async generateJson<T>(prompt: string, schema: ZodType<T>): Promise<T> {
     if (prompt.length === 0) {
       throw new Error("FakeLlmProvider requires a non-empty prompt");

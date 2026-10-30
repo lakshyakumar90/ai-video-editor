@@ -1,5 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { FakeLlmProvider, fakeSceneScript } from "../src/services/fake-llm-provider.js";
+import {
+  FakeLlmProvider,
+  fakeSceneScript,
+} from "../src/services/fake-llm-provider.js";
 import { OpenCodeProvider } from "../src/services/opencode-llm-provider.js";
 import { OpenAiCompatibleProvider } from "../src/services/hosted-llm-provider.js";
 import {
@@ -90,7 +93,9 @@ describe("getLlmProvider", () => {
 
   it("refuses CLI-backed providers in hosted deployments", () => {
     process.env.DEPLOYMENT_MODE = "hosted";
-    expect(() => getLlmProvider("opencode")).toThrowError(ProviderResolutionError);
+    expect(() => getLlmProvider("opencode")).toThrowError(
+      ProviderResolutionError,
+    );
     expect(() => getLlmProvider("opencode")).toThrowError(/self-hosted only/);
   });
 
@@ -112,23 +117,31 @@ describe("hosted-openai (BYOK placeholder in the registry)", () => {
     process.env.LLM_HOSTED_BASE_URL = "https://api.example.com";
     process.env.LLM_HOSTED_API_KEY = "key";
     process.env.LLM_HOSTED_MODEL = "model";
-    expect(getLlmProvider("hosted-openai")).toBeInstanceOf(OpenAiCompatibleProvider);
+    expect(getLlmProvider("hosted-openai")).toBeInstanceOf(
+      OpenAiCompatibleProvider,
+    );
   });
 });
 
 describe("capabilities", () => {
-  it("declares JSON-in-text with no native tool calling for every provider", async () => {
+  it("declares every provider's complete capability contract", async () => {
     for (const descriptor of describeLlmProviders()) {
       expect(descriptor.capabilities).toEqual({
         structuredOutput: "json-in-text",
         toolCalling: false,
+        vision: false,
+        streaming: false,
+        maxContext: null,
       });
     }
   });
 
   it("delivers on the declared capability: schema-validated JSON from text", async () => {
     const provider = getLlmProvider("fake");
-    const plan = await provider.generateJson("a tokyo night edit", scenePlansSchema);
+    const plan = await provider.generateJson(
+      "a tokyo night edit",
+      scenePlansSchema,
+    );
     expect(plan).toEqual(fakeSceneScript);
   });
 

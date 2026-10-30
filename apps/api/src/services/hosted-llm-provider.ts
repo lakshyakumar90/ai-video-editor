@@ -1,5 +1,9 @@
 import type { ZodType } from "zod";
-import type { LlmProvider } from "./llm-provider.js";
+import {
+  JSON_IN_TEXT_CAPABILITIES,
+  LlmProviderBase,
+  type ProviderCapabilities,
+} from "./llm-provider.js";
 
 /**
  * Stub for a second provider: a hosted, OpenAI-compatible chat API.
@@ -23,13 +27,15 @@ export interface OpenAiCompatibleProviderOptions {
   fetch?: typeof fetch;
 }
 
-export class OpenAiCompatibleProvider implements LlmProvider {
+export class OpenAiCompatibleProvider extends LlmProviderBase {
+  readonly capabilities: ProviderCapabilities = JSON_IN_TEXT_CAPABILITIES;
   private readonly baseUrl: string;
   private readonly apiKey: string;
   private readonly model: string;
   private readonly fetchImpl: typeof fetch;
 
   constructor(options: OpenAiCompatibleProviderOptions) {
+    super();
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.apiKey = options.apiKey;
     this.model = options.model;
