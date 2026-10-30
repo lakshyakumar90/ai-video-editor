@@ -313,6 +313,9 @@ export const timelineSchema = z
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
+/** Anything a caller holds that could be a v1 or v2 timeline. */
+export type TimelineInput = unknown;
+
 export type AspectRatio = z.infer<typeof aspectRatioSchema>;
 export type Resolution = z.infer<typeof resolutionSchema>;
 export type MvpMode = z.infer<typeof mvpModeSchema>;
