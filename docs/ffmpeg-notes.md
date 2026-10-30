@@ -17,6 +17,7 @@ pnpm --filter api exec tsx scripts/spike-concat.ts
 pnpm --filter api exec tsx scripts/spike-burn-ass.ts
 pnpm --filter api exec tsx scripts/spike-ducked-mix.ts
 pnpm --filter api exec tsx scripts/spike-three-scene-render.ts
+pnpm --filter api exec tsx scripts/spike-media-operations.ts
 ```
 
 The last command writes `tmp/outputs/three-scene-render.mp4`. The committed
@@ -53,3 +54,44 @@ The output has been inspected with `ffprobe` for a 1080×1920 video stream, an
 audio stream, and duration close to the narration. Phone playback remains a
 manual device check; verify portrait orientation and perceived audio sync on a
 phone before treating that checklist item as complete.
+
+## Five-minute edit-operation spike
+
+Run `pnpm --filter api exec tsx scripts/spike-media-operations.ts` to recreate
+the benchmark and repeat the measurements. It loops the checked-in
+1280×720 sample clip into a 300-second VFR file and adds a synthetic 440 Hz
+audio track with six regular silent ranges. Outputs and raw timings are written
+to ignored `tmp/outputs/ffmpeg-spikes/`; the process uses FFmpeg 7.0 on this
+Windows workstation. Wall times include process start-up and vary with machine
+and cache state.
+
+| Operation                                    |                   Time | Result from the 300s source                                                            |
+| -------------------------------------------- | ---------------------: | -------------------------------------------------------------------------------------- |
+| Create VFR benchmark                         |                40.372s | 144.43 MB; 1280×720; average 18 fps; audio 48 kHz                                      |
+| Frame-accurate 20s trim, re-encode           |                 8.974s | 20.000s; 4.85 MB                                                                       |
+| Fast 20s trim, stream copy                   |                 0.234s | 20.013s; 10.28 MB; starts at the 70.000s keyframe for requested 71.237s (1.237s early) |
+| VFR → CFR 30 fps and audio resample          |                34.799s | 300.01s; 30 fps; audio 48 kHz; 156.70 MB                                               |
+| 480p proxy encode                            |                23.985s | 67.58 MB, 53.2% smaller; five random seeks 1.081s vs 1.141s original                   |
+| Extract audio as 48 kHz PCM                  |                 0.895s | Full-length WAV                                                                        |
+| Ten thumbnails, one every 30s                |                 5.971s | 320px-wide JPEGs                                                                       |
+| Waveform image                               |                 0.980s | 1600×260 PNG                                                                           |
+| Detect six silences                          |                 1.135s | `silencedetect` ranges parsed from stderr                                              |
+| Remove silence with paired video/audio trims |                22.754s | 250.04s retained; video 249.920s, audio 250.041s (121ms end drift)                     |
+| Movable 9:16 crop, left / center / right     | 1.761 / 1.694 / 1.853s | Each output 1080×1920, 8s                                                              |
+| 1.25× video speed + `atempo` + `loudnorm`    |                34.206s | 240.00s; audio 48 kHz; loudnorm target -16 LUFS / -1.5 dBTP                            |
+
+Use re-encoding when a cut must begin on the requested frame; the tested
+stream-copy cut is about 38× faster but starts at the preceding keyframe, so
+it fits rough assembly and fast previews. The 480p proxy cuts storage by about
+half, while the measured five-seek difference was only 60ms and is within
+start-up/cache noise; treat the proxy as a bandwidth and decode-load aid, not
+a proven seek-speed win. CFR normalization gives downstream operations a
+predictable clock and costs an additional encode pass. The silence-removal
+filter applies matching time ranges to video and audio; its final streams
+differ by 121ms due to frame and audio packet boundaries.
+
+The hardcoded three-scene proof is reproducible with
+`pnpm --filter api exec tsx scripts/spike-three-scene-render.ts`. It produced
+three 1080×1920 scenes, 3.030s narration, a ducked synthesized music bed, and
+burned ASS subtitles in a 3.000s MP4. The checked-in samples contain no
+separate music track, so the current music bed is a generated chord.
