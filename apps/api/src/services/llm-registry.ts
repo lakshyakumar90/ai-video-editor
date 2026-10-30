@@ -10,6 +10,7 @@ import { OpenCodeProvider } from "./opencode-llm-provider.js";
 import { OpenAiProvider } from "./openai-llm-provider.js";
 import { AnthropicProvider } from "./anthropic-llm-provider.js";
 import { GeminiProvider } from "./gemini-llm-provider.js";
+import { CodexCliProvider } from "./codex-cli-llm-provider.js";
 import {
   OPENAI_COMPATIBLE_PRESETS,
   OpenAiCompatibleProvider,
@@ -56,7 +57,13 @@ export interface LlmProviderDescriptor {
 }
 
 export type LlmProviderName =
-  "fake" | "opencode" | "hosted-openai" | "openai" | "anthropic" | "gemini";
+  | "fake"
+  | "opencode"
+  | "codex"
+  | "hosted-openai"
+  | "openai"
+  | "anthropic"
+  | "gemini";
 
 export class ProviderResolutionError extends Error {
   constructor(message: string) {
@@ -194,6 +201,22 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
         },
         create: () =>
           new GeminiProvider(process.env.GEMINI_MODEL ?? "gemini-2.5-flash"),
+      },
+    ],
+    [
+      "codex",
+      {
+        name: "codex",
+        description:
+          "Codex CLI using local saved login or a request-scoped CODEX_API_KEY",
+        deployment: "self-hosted",
+        capabilities: SUPPORTED_LLM_CAPABILITIES,
+        create: () =>
+          new CodexCliProvider({
+            ...(process.env.CODEX_MODEL
+              ? { model: process.env.CODEX_MODEL }
+              : {}),
+          }),
       },
     ],
   ]);

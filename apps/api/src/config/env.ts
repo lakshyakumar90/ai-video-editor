@@ -45,6 +45,7 @@ const envSchema = z.object({
     .enum([
       "fake",
       "opencode",
+      "codex",
       "hosted-openai",
       "openai",
       "anthropic",

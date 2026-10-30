@@ -90,7 +90,7 @@ describe("getLlmProvider", () => {
 
   it("names the available providers in the unknown-provider error", () => {
     expect(() => getLlmProvider("codex-not-registered")).toThrowError(
-      /unknown LLM provider "codex-not-registered" - available providers: fake, opencode, hosted-openai, openai, anthropic, gemini/,
+      /unknown LLM provider "codex-not-registered" - available providers: fake, opencode, hosted-openai, openai, anthropic, gemini, codex/,
     );
   });
 
@@ -100,6 +100,7 @@ describe("getLlmProvider", () => {
       ProviderResolutionError,
     );
     expect(() => getLlmProvider("opencode")).toThrowError(/self-hosted only/);
+    expect(() => getLlmProvider("codex")).toThrowError(/self-hosted only/);
   });
 
   it("never resolves the fake double in production", () => {

@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 8/18
+**Progress:** 10/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -21,9 +21,9 @@ instances and secrets must not be shared across users.
 - [x] Add a Google GenAI SDK adapter with JSON schema, function calling, image,
       and video input.
 - [x] Add an OpenAI SDK adapter with JSON schema and tool calls.
-- [ ] Add a Codex CLI adapter using `codex exec` in an empty temporary
+- [x] Add a Codex CLI adapter using `codex exec` in an empty temporary
       directory, default read-only sandbox, and saved login or `CODEX_API_KEY`.
-- [ ] Mark Codex and OpenCode as local CLI providers; reject them in hosted
+- [x] Mark Codex and OpenCode as local CLI providers; reject them in hosted
       mode.
 - [ ] Expand the registry with provider id, kind, capabilities, default model,
       and health probe.
