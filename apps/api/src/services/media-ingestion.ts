@@ -3,9 +3,10 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import type { CaptionWord, Transcript } from "@repo/shared";
+import type { Transcript } from "@repo/shared";
 import { env } from "../config/env.js";
-import { runFfmpeg, runFfprobe, runProcess } from "./ffmpeg.js";
+import { runFfmpeg, runFfprobe } from "./ffmpeg.js";
+import { DockerWhisperTranscriptionProvider } from "./media-providers.js";
 import { getLlmProvider, llmProviders } from "./llm-registry.js";
 import { resolveLlmCredential } from "./llm-credentials.js";
 import { resolveTaskRoute, generateJsonForTask } from "./llm-task-router.js";
@@ -682,80 +683,10 @@ async function detectSceneChanges(file: string): Promise<number[]> {
 }
 
 async function transcribeWithWhisper(wavPath: string): Promise<Transcript> {
-  const outputPrefix = path.join(path.dirname(wavPath), "transcription");
-  const jsonPath = `${outputPrefix}.json`;
-  await rm(jsonPath, { force: true });
-  await runProcess(env.WHISPER_CPP_PATH, [
-    "-m",
-    env.WHISPER_MODEL_PATH,
-    "-f",
-    wavPath,
-    "-ojf",
-    "-of",
-    outputPrefix,
-    "-np",
-  ]);
-  let parsed: {
-    transcription?: Array<{
-      text?: string;
-      timestamps?: { from?: string; to?: string };
-      tokens?: Array<{
-        text?: string;
-        offsets?: { from?: number; to?: number };
-        timestamps?: { from?: string; to?: string };
-      }>;
-    }>;
-  };
-  try {
-    parsed = JSON.parse(await readFile(jsonPath, "utf8")) as typeof parsed;
-  } catch (error) {
-    throw new Error(
-      `Whisper completed but its word-timestamp JSON was missing or invalid: ${jsonPath}`,
-      { cause: error },
-    );
-  }
-  const segments = parsed.transcription ?? [];
-  const text = segments
-    .map((segment) => segment.text?.trim() ?? "")
-    .filter(Boolean)
-    .join(" ");
-  if (!text) return { text: "[no speech detected]", words: [] };
-  const words: CaptionWord[] = [];
-  for (const segment of segments) {
-    const segmentText = segment.text?.trim() ?? "";
-    const from = parseWhisperTime(segment.timestamps?.from);
-    const to = parseWhisperTime(segment.timestamps?.to);
-    const tokens = segment.tokens?.filter((token) => token.text?.trim());
-    if (tokens?.length) {
-      for (const token of tokens) {
-        const word = token.text!.trim();
-        const tokenStart =
-          token.offsets?.from != null
-            ? token.offsets.from / 1000
-            : parseWhisperTime(token.timestamps?.from);
-        const tokenEnd =
-          token.offsets?.to != null
-            ? token.offsets.to / 1000
-            : parseWhisperTime(token.timestamps?.to);
-        words.push({
-          word,
-          start: tokenStart ?? from,
-          end: tokenEnd ?? Math.max(tokenStart ?? from, to),
-        });
-      }
-    } else {
-      const pieces = segmentText.split(/\s+/).filter(Boolean);
-      const span = Math.max(0, to - from);
-      pieces.forEach((word, i) =>
-        words.push({
-          word,
-          start: from + (span * i) / pieces.length,
-          end: from + (span * (i + 1)) / pieces.length,
-        }),
-      );
-    }
-  }
-  return { text, words };
+  return new DockerWhisperTranscriptionProvider().transcribe({
+    userId: "media-ingestion",
+    audioPath: wavPath,
+  });
 }
 
 async function describeFrameWithLlm(
@@ -882,12 +813,4 @@ function centerCrop(
   }
   const cropHeight = aspect / target;
   return { x: 0, y: (1 - cropHeight) / 2, width: 1, height: cropHeight };
-}
-
-function parseWhisperTime(value: string | undefined): number {
-  if (!value) return 0;
-  const parts = value.split(":").map(Number);
-  return parts.length === 3
-    ? parts[0]! * 3600 + parts[1]! * 60 + parts[2]!
-    : Number(value) || 0;
 }

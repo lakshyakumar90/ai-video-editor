@@ -264,6 +264,121 @@ export class PexelsStockProvider implements StockProvider {
   }
 }
 
+export class PixabayStockProvider implements StockProvider {
+  constructor(
+    private readonly storage: StorageProvider = new LocalDiskStorageProvider(),
+  ) {}
+
+  async search(input: {
+    userId: string;
+    query: string;
+    broaden?: boolean;
+  }): Promise<StockCandidate[]> {
+    const credential = resolveLlmCredential({
+      userId: input.userId,
+      providerId: "pixabay",
+      allowPlatformFallback: Boolean(env.PIXABAY_API_KEY),
+      planAllowsPlatformKey: Boolean(env.PIXABAY_API_KEY),
+      platformKey: env.PIXABAY_API_KEY || undefined,
+    });
+    const query = input.broaden ? broadenStockQuery(input.query) : input.query;
+    const cacheKey = `search-cache/pixabay/${createHash("sha256")
+      .update(query.toLowerCase().trim())
+      .digest("hex")}.json`;
+    try {
+      const cached = JSON.parse(
+        new TextDecoder().decode(await this.storage.get(cacheKey)),
+      ) as { expiresAt: number; candidates: StockCandidate[] };
+      if (cached.expiresAt > Date.now()) return cached.candidates;
+    } catch {
+      // A missing or expired cache entry proceeds to Pixabay.
+    }
+    const params = new URLSearchParams({
+      key: credential.apiKey,
+      q: query.slice(0, 100),
+      video_type: "film",
+      min_width: "1080",
+      per_page: "50",
+    });
+    const response = await fetch(`https://pixabay.com/api/videos/?${params}`);
+    if (!response.ok)
+      throw new Error(`Pixabay video search failed (${response.status})`);
+    const body = (await response.json()) as {
+      hits?: Array<{
+        id: number;
+        tags: string;
+        duration: number;
+        videos?: Record<
+          string,
+          | {
+              url?: string;
+              width?: number;
+              height?: number;
+              size?: number;
+            }
+          | undefined
+        >;
+      }>;
+    };
+    const hits = body.hits ?? [];
+    const candidates = hits
+      .flatMap((hit, index) => {
+        const rendition = Object.values(hit.videos ?? {})
+          .filter(
+            (video): video is { url: string; width: number; height: number } =>
+              Boolean(
+                video?.url &&
+                video.width &&
+                video.height &&
+                video.width >= 1080 &&
+                video.height >= video.width,
+              ),
+          )
+          .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+        if (!rendition) return [];
+        return [
+          {
+            id: String(hit.id),
+            url: rendition.url,
+            description: hit.tags,
+            duration: hit.duration,
+            width: rendition.width,
+            height: rendition.height,
+            score: Math.max(0, 1 - index / Math.max(1, hits.length)),
+          },
+        ];
+      })
+      .sort((a, b) => scoreCandidate(query, b) - scoreCandidate(query, a))
+      .slice(0, 10);
+    await this.storage.put(
+      cacheKey,
+      new TextEncoder().encode(
+        JSON.stringify({
+          expiresAt: Date.now() + 24 * 60 * 60 * 1000,
+          candidates,
+        }),
+      ),
+    );
+    return candidates;
+  }
+
+  async download(input: {
+    userId: string;
+    candidate: StockCandidate;
+    storage?: StorageProvider;
+  }): Promise<{ key: string; url: string }> {
+    const key = `stock/${safePart(input.candidate.id)}.mp4`;
+    const storage = input.storage ?? this.storage;
+    if (!(await storageContains(storage, key))) {
+      const response = await fetch(input.candidate.url);
+      if (!response.ok)
+        throw new Error(`Pixabay clip download failed (${response.status})`);
+      await storage.put(key, new Uint8Array(await response.arrayBuffer()));
+    }
+    return { key, url: await storage.getUrl(key) };
+  }
+}
+
 export class FakeTranscriptionProvider implements TranscriptionProvider {
   async transcribe(input: {
     userId: string;
@@ -341,6 +456,75 @@ export class WhisperTranscriptionProvider implements TranscriptionProvider {
   }
 }
 
+export class DockerWhisperTranscriptionProvider implements TranscriptionProvider {
+  async transcribe(input: {
+    userId: string;
+    audioPath: string;
+  }): Promise<Transcript> {
+    const body = new FormData();
+    body.append(
+      "file",
+      new Blob([await readFile(input.audioPath)]),
+      path.basename(input.audioPath),
+    );
+    body.append("response_format", "verbose_json");
+    body.append("temperature", "0.0");
+    body.append("token_timestamps", "true");
+    const baseUrl = env.WHISPER_SERVER_URL.replace(/\/$/, "");
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/inference`, {
+        method: "POST",
+        body,
+        signal: AbortSignal.timeout(10 * 60 * 1000),
+      });
+    } catch (error) {
+      throw new Error(
+        `could not reach local Whisper server at ${baseUrl}: ${error instanceof Error ? error.message : "connection failed"}`,
+        { cause: error },
+      );
+    }
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      throw new Error(
+        `local Whisper server failed (${response.status}): ${detail}`,
+      );
+    }
+    const result = (await response.json()) as {
+      text?: string;
+      segments?: Array<{
+        text?: string;
+        start?: number;
+        end?: number;
+        words?: Array<{ word?: string; start?: number; end?: number }>;
+      }>;
+    };
+    const words = (result.segments ?? []).flatMap((segment) =>
+      (segment.words ?? [])
+        .filter(
+          (word): word is { word: string; start: number; end: number } =>
+            typeof word.word === "string" &&
+            typeof word.start === "number" &&
+            typeof word.end === "number",
+        )
+        .map((word) => ({
+          word: word.word.trim(),
+          start: word.start,
+          end: Math.max(word.start, word.end),
+        }))
+        .filter((word) => word.word.length > 0),
+    );
+    if (result.text?.trim() && !words.length)
+      throw new Error(
+        "local Whisper returned text without word timestamps; verbose_json with token_timestamps is required",
+      );
+    return {
+      text: result.text?.trim() || "[no speech detected]",
+      words,
+    };
+  }
+}
+
 export function createMediaProviders() {
   const storage: StorageProvider = new LocalDiskStorageProvider();
   const tts: TtsProvider =
@@ -350,11 +534,15 @@ export function createMediaProviders() {
   const stock: StockProvider =
     env.STOCK_PROVIDER === "fake"
       ? new FakeStockProvider(storage)
-      : new PexelsStockProvider(storage);
+      : env.STOCK_PROVIDER === "pixabay"
+        ? new PixabayStockProvider(storage)
+        : new PexelsStockProvider(storage);
   const transcription: TranscriptionProvider =
     env.TRANSCRIPTION_PROVIDER === "fake"
       ? new FakeTranscriptionProvider()
-      : new WhisperTranscriptionProvider();
+      : env.TRANSCRIPTION_PROVIDER === "whisper-http"
+        ? new DockerWhisperTranscriptionProvider()
+        : new WhisperTranscriptionProvider();
   return { tts, stock, transcription, storage, fileUrlToPath };
 }
 

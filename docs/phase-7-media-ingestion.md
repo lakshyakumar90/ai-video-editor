@@ -31,8 +31,9 @@ sampled frame descriptions, word-timed transcript, center-crop recommendation,
 and suggested highlights. Derived files and analysis cache under
 `UPLOAD_DIR/derived/<sha256>`.
 
-For speech recognition, install whisper.cpp and set `WHISPER_CPP_PATH` and
-`WHISPER_MODEL_PATH`. Vision and semantic embeddings use the signed-in user's
+For speech recognition, ingestion uses the local whisper.cpp Docker server at
+`WHISPER_SERVER_URL` (default `http://127.0.0.1:8080`) and requests verbose
+word-timestamp JSON. Vision and semantic embeddings use the signed-in user's
 OpenAI key; frame descriptions follow the configured vision task route. Set
 `MEDIA_DATABASE_URL` to a PostgreSQL database with pgvector available to enable
 the HNSW vector index. The service creates the index schema automatically; the

@@ -21,8 +21,12 @@ const envSchema = z.object({
   TTS_PROVIDER: z.enum(["fake", "openai"]).default("fake"),
   TTS_MODEL: z.string().min(1).default("gpt-4o-mini-tts"),
   TTS_VOICE: z.string().min(1).default("alloy"),
-  STOCK_PROVIDER: z.enum(["fake", "pexels"]).default("fake"),
-  TRANSCRIPTION_PROVIDER: z.enum(["fake", "whisper"]).default("fake"),
+  PIXABAY_API_KEY: z.string().default(""),
+  STOCK_PROVIDER: z.enum(["fake", "pexels", "pixabay"]).default("fake"),
+  TRANSCRIPTION_PROVIDER: z
+    .enum(["fake", "whisper", "whisper-http"])
+    .default("fake"),
+  WHISPER_SERVER_URL: z.string().url().default("http://127.0.0.1:8080"),
   STORAGE_PROVIDER: z.enum(["local-disk"]).default("local-disk"),
   MEDIA_MUSIC_DIR: z.string().min(1).default("assets/music"),
 

@@ -56,7 +56,7 @@ if (mode === "all" || mode === "stock") {
   console.log(
     `stock provider: ${candidates.length} candidate(s), cached ${clip.key}`,
   );
-  if (process.env.STOCK_PROVIDER !== "pexels") await storage.delete(clip.key);
+  if (process.env.STOCK_PROVIDER === "fake") await storage.delete(clip.key);
 }
 
 if (mode === "all" || mode === "music") {
