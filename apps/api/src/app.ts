@@ -10,6 +10,9 @@ import { pinoHttp } from "pino-http";
 import { uploadsRouter } from "./routes/uploads.js";
 import { logger } from "./lib/logger.js";
 import { env } from "./config/env.js";
+import { toNodeHandler } from "better-auth/node";
+import { auth, authReady } from "./services/auth.js";
+import { providersRouter } from "./routes/providers.js";
 
 /**
  * JSON payloads are small by design (prompts, edit instructions,
@@ -26,7 +29,18 @@ export function createApp(): Express {
   // All request/response logging flows through the redacted logger; a
   // header or body carrying a secret can never be written to the logs.
   app.use(pinoHttp({ logger }));
+  const authHandler = toNodeHandler(auth);
+  app.all("/api/auth/*splat", async (req, res, next) => {
+    try {
+      await authReady;
+      authHandler(req, res);
+    } catch (error) {
+      next(error);
+    }
+  });
   app.use(express.json({ limit: JSON_BODY_LIMIT }));
+
+  app.use("/api/providers", providersRouter());
 
   // Large uploads (raw footage, audio) stream straight to disk with
   // their own byte cap (UPLOAD_MAX_BYTES), not through express.json.

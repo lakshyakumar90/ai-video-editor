@@ -8,6 +8,12 @@ const envSchema = z.object({
 
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
+  BETTER_AUTH_SECRET: z
+    .string()
+    .min(32, "BETTER_AUTH_SECRET must be at least 32 characters"),
+  BETTER_AUTH_URL: z.string().url().default("http://localhost:3000"),
+  LLM_DATABASE_PATH: z.string().min(1).optional(),
+
   // CORS
   WEB_ORIGIN: z.string().url(),
 

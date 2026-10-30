@@ -14,6 +14,8 @@ export const REDACT_PATHS = [
   // Request headers
   'req.headers["authorization"]',
   'req.headers["x-api-key"]',
+  'req.headers["cookie"]',
+  'res.headers["set-cookie"]',
   // Payload fields, top level and one nesting level deep
   "authorization",
   "*.authorization",

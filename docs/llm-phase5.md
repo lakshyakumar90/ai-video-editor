@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 10/18
+**Progress:** 11/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -30,7 +30,7 @@ instances and secrets must not be shared across users.
 - [ ] Route script planning, edit-agent, vision, and translation by task.
 - [ ] Add per-task fallback for rate limits, quota errors, and timeouts; never
       switch from a user key to a platform key without explicit consent.
-- [ ] Add an AES-256-GCM key vault with one encrypted record per user/provider
+- [x] Add an AES-256-GCM key vault with one encrypted record per user/provider
       and last-four-character display metadata.
 - [ ] Resolve credentials per request (user key first, eligible platform key
       only with consent); do not keep credentials in global state.
@@ -46,4 +46,5 @@ instances and secrets must not be shared across users.
 The selected identity integration is Better Auth. BYOK key storage and
 per-user credential resolution will use the verified Better Auth session user
 id. Never trust a client-supplied `userId` header or body field for key
-ownership.
+ownership. Configure `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, and the existing
+32-byte hex `MASTER_KEY` before starting the API.

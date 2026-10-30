@@ -1,6 +1,10 @@
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { createLogger, REDACT_CENSOR, REDACT_PATHS } from "../src/lib/logger.js";
+import {
+  createLogger,
+  REDACT_CENSOR,
+  REDACT_PATHS,
+} from "../src/lib/logger.js";
 
 function captureLog(): {
   log: (object: unknown) => void;
@@ -20,7 +24,11 @@ function captureLog(): {
 describe("logger redaction", () => {
   it("redacts secret-bearing fields at the top level", () => {
     const capture = captureLog();
-    capture.log({ authorization: "Bearer sk-secret", apiKey: "sk-123", "x-api-key": "sk-456" });
+    capture.log({
+      authorization: "Bearer sk-secret",
+      apiKey: "sk-123",
+      "x-api-key": "sk-456",
+    });
 
     const output = capture.lines().join("");
     expect(output).not.toContain("sk-secret");
@@ -64,9 +72,26 @@ describe("logger redaction", () => {
     expect(output).toContain('"content-type":"application/octet-stream"');
   });
 
+  it("redacts Better Auth cookies on requests and responses", () => {
+    const capture = captureLog();
+    capture.log({
+      req: { headers: { cookie: "better-auth.session_token=secret-session" } },
+      res: {
+        headers: { "set-cookie": ["better-auth.session_token=secret-session"] },
+      },
+    });
+    const output = capture.lines().join("");
+    expect(output).not.toContain("secret-session");
+    expect(output).toContain(REDACT_CENSOR);
+  });
+
   it("leaves non-secret fields untouched", () => {
     const capture = captureLog();
-    capture.log({ provider: "opencode", model: "flint-40b-free", apiKey: "sk-x" });
+    capture.log({
+      provider: "opencode",
+      model: "flint-40b-free",
+      apiKey: "sk-x",
+    });
 
     const output = capture.lines().join("");
     expect(output).toContain("opencode");
@@ -82,7 +107,9 @@ describe("logger redaction", () => {
       if (leaf) seen.add(leaf);
     }
     for (const name of coverage) {
-      expect(seen.has(name), `REDACT_PATHS is missing a path for ${name}`).toBe(true);
+      expect(seen.has(name), `REDACT_PATHS is missing a path for ${name}`).toBe(
+        true,
+      );
     }
   });
 });
