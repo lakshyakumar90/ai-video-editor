@@ -1,7 +1,7 @@
 # Phase 5: LLM hub
 
 **Status:** In progress  
-**Progress:** 3/18
+**Progress:** 5/18
 
 This checklist tracks the implementation contract requested for Phase 5.
 An item is checked only after its implementation and relevant verification are
@@ -14,8 +14,8 @@ instances and secrets must not be shared across users.
       `describeImage`, and `capabilities`.
 - [x] Add validated JSON-in-text tool fallback for providers without native
       tools; return operation lists.
-- [ ] Build a generic OpenAI-compatible adapter and OpenRouter preset.
-- [ ] Add Groq, Together, DeepSeek, Ollama, LM Studio, and vLLM presets using
+- [x] Build a generic OpenAI-compatible adapter and OpenRouter preset.
+- [x] Add Groq, Together, DeepSeek, Ollama, LM Studio, and vLLM presets using
       the compatible adapter.
 - [ ] Add an Anthropic SDK adapter with messages, tools, and image input.
 - [ ] Add a Google GenAI SDK adapter with JSON schema, function calling, image,
@@ -43,8 +43,7 @@ instances and secrets must not be shared across users.
 
 ## Identity dependency
 
-The API currently has no authentication or trusted user identity. The selected
-integration is Better Auth. BYOK key storage and per-user credential
-resolution must remain fail-closed until Better Auth provides a verified user
+The selected identity integration is Better Auth. BYOK key storage and
+per-user credential resolution will use the verified Better Auth session user
 id. Never trust a client-supplied `userId` header or body field for key
 ownership.

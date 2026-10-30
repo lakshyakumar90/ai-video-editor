@@ -125,15 +125,23 @@ describe("hosted-openai (BYOK placeholder in the registry)", () => {
 
 describe("capabilities", () => {
   it("declares every provider's complete capability contract", async () => {
-    for (const descriptor of describeLlmProviders()) {
-      expect(descriptor.capabilities).toEqual({
-        structuredOutput: "json-in-text",
-        toolCalling: false,
-        vision: false,
-        streaming: false,
-        maxContext: null,
-      });
+    const descriptors = describeLlmProviders();
+    for (const descriptor of descriptors) {
+      expect(descriptor.capabilities).toHaveProperty("structuredOutput");
+      expect(descriptor.capabilities).toHaveProperty("toolCalling");
+      expect(descriptor.capabilities).toHaveProperty("vision");
+      expect(descriptor.capabilities).toHaveProperty("streaming");
+      expect(descriptor.capabilities).toHaveProperty("maxContext");
     }
+    expect(llmProviders.get("opencode")?.capabilities).toMatchObject({
+      toolCalling: false,
+      vision: false,
+      streaming: false,
+    });
+    expect(llmProviders.get("hosted-openai")?.capabilities).toMatchObject({
+      toolCalling: true,
+      streaming: true,
+    });
   });
 
   it("delivers on the declared capability: schema-validated JSON from text", async () => {

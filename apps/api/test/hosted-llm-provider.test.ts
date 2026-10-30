@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { LlmProvider } from "../src/services/llm-provider.js";
 import {
+  OPENAI_COMPATIBLE_PRESETS,
   OpenAiCompatibleProvider,
   type OpenAiCompatibleProviderOptions,
 } from "../src/services/hosted-llm-provider.js";
@@ -24,7 +25,10 @@ describe("OpenAiCompatibleProvider (second-provider stub)", () => {
       });
       return new Response(
         JSON.stringify({
-          choices: [{ message: { content: '{"title":"Dawn Run","year":2026}' } }],
+          choices: [
+            { message: { content: '{"title":"Dawn Run","year":2026}' } },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 3 },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
@@ -34,12 +38,16 @@ describe("OpenAiCompatibleProvider (second-provider stub)", () => {
 
   const options: OpenAiCompatibleProviderOptions = {
     baseUrl: "https://hosted.example/v0/",
-    apiKey: "hosted-api-key",
     model: "hosted-flash-free",
   };
 
   it("calls the hosted chat-completions endpoint and validates the reply", async () => {
     const { calls, fetchMock } = makeHostedFetch();
+    const usage: Array<{
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    }> = [];
     const provider = new OpenAiCompatibleProvider({
       ...options,
       fetch: fetchMock,
@@ -48,10 +56,11 @@ describe("OpenAiCompatibleProvider (second-provider stub)", () => {
     const result = await provider.generateJson(
       "one scene about a morning run",
       oneSceneSchema,
+      { apiKey: "hosted-api-key", onUsage: (value) => usage.push(value) },
     );
 
     expect(result).toEqual({ title: "Dawn Run", year: 2026 });
-    expect(calls[0]?.url).toBe("https://hosted.example/v0/v1/chat/completions");
+    expect(calls[0]?.url).toBe("https://hosted.example/v0/chat/completions");
     expect(calls[0]?.auth).toBe("Bearer hosted-api-key");
     const body = calls[0]?.body as {
       model: string;
@@ -61,16 +70,151 @@ describe("OpenAiCompatibleProvider (second-provider stub)", () => {
     expect(body.model).toBe("hosted-flash-free");
     expect(body.response_format.type).toBe("json_object");
     expect(body.messages.map((m) => m.role)).toEqual(["system", "user"]);
+    expect(usage).toEqual([
+      { inputTokens: 4, outputTokens: 3, totalTokens: 7 },
+    ]);
   });
 
   it("rejects an empty prompt without calling the API", async () => {
     const { calls, fetchMock } = makeHostedFetch();
-    const provider = new OpenAiCompatibleProvider({ ...options, fetch: fetchMock });
+    const provider = new OpenAiCompatibleProvider({
+      ...options,
+      fetch: fetchMock,
+    });
 
     await expect(
       provider.generateJson("   ", oneSceneSchema),
     ).rejects.toThrowError(/empty/);
     expect(calls).toHaveLength(0);
+  });
+
+  it("uses native tool calls and validates arguments against each tool schema", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://hosted.example/v1",
+      model: "tool-model",
+      fetch: async (_input, init) => {
+        const body = JSON.parse(init?.body as string) as {
+          tools: Array<{ function: { name: string } }>;
+        };
+        expect(body.tools[0]?.function.name).toBe("setSpeed");
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  tool_calls: [
+                    {
+                      id: "call-1",
+                      function: {
+                        name: "setSpeed",
+                        arguments: '{"clipId":"clip-1","speed":2}',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          }),
+        );
+      },
+    });
+    const calls = await provider.generateWithTools(
+      "double the clip speed",
+      [
+        {
+          name: "setSpeed",
+          description: "Set playback speed",
+          parameters: z.object({
+            clipId: z.string(),
+            speed: z.number().min(0.1),
+          }),
+        },
+      ],
+      { apiKey: "byok-key" },
+    );
+    expect(calls).toEqual([
+      {
+        id: "call-1",
+        name: "setSpeed",
+        arguments: { clipId: "clip-1", speed: 2 },
+      },
+    ]);
+  });
+
+  it("sends image data to a vision-capable compatible model", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://hosted.example/v1",
+      model: "vision-model",
+      capabilities: { vision: true },
+      fetch: async (_input, init) => {
+        requestBody = JSON.parse(init?.body as string) as Record<
+          string,
+          unknown
+        >;
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "A mountain at dawn." } }],
+          }),
+        );
+      },
+    });
+    await expect(
+      provider.describeImage(
+        { data: "aGVsbG8=", mediaType: "image/png" },
+        "Describe",
+        { apiKey: "byok-key" },
+      ),
+    ).resolves.toBe("A mountain at dawn.");
+    expect(JSON.stringify(requestBody)).toContain(
+      "data:image/png;base64,aGVsbG8=",
+    );
+  });
+
+  it("streams text chunks as server-sent events", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://hosted.example/v1",
+      model: "stream-model",
+      fetch: async () =>
+        new Response(
+          'data: {"choices":[{"delta":{"content":"hello "}}]}\n\ndata: {"choices":[{"delta":{"content":"world"}}]}\n\ndata: [DONE]\n\n',
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+    });
+    const chunks: string[] = [];
+    for await (const chunk of provider.stream("say hello", {
+      apiKey: "byok-key",
+    }))
+      chunks.push(chunk);
+    expect(chunks.join("")).toBe("hello world");
+  });
+
+  it("maps invalid keys to a readable error without echoing provider bodies", async () => {
+    const provider = new OpenAiCompatibleProvider({
+      baseUrl: "https://hosted.example/v1",
+      model: "model",
+      fetch: async () =>
+        new Response("secret account payload", { status: 401 }),
+    });
+    await expect(
+      provider.generateJson("prompt", oneSceneSchema, { apiKey: "bad-key" }),
+    ).rejects.toThrowError("openai-compatible rejected the API key");
+  });
+
+  it("declares all requested compatible-provider presets", () => {
+    expect(Object.keys(OPENAI_COMPATIBLE_PRESETS)).toEqual([
+      "openai-compatible",
+      "openrouter",
+      "groq",
+      "together",
+      "deepseek",
+      "ollama",
+      "lm-studio",
+      "vllm",
+    ]);
+    expect(OPENAI_COMPATIBLE_PRESETS.openrouter.baseUrl).toBe(
+      "https://openrouter.ai/api/v1",
+    );
   });
 });
 
@@ -80,12 +224,14 @@ describe("OpenAiCompatibleProvider (second-provider stub)", () => {
  * providers, each behind its own mock transport.
  */
 describe("LlmProvider swaps cleanly", () => {
-  async function scriptVia(provider: LlmProvider): Promise<
-    z.infer<typeof oneSceneSchema>
-  > {
+  async function scriptVia(
+    provider: LlmProvider,
+    apiKey?: string,
+  ): Promise<z.infer<typeof oneSceneSchema>> {
     const reply = await provider.generateJson(
       "one scene about a morning run",
       oneSceneSchema,
+      apiKey ? { apiKey } : undefined,
     );
     expect(reply).toEqual({ title: "Dawn Run", year: 2026 });
     return reply;
@@ -93,12 +239,13 @@ describe("LlmProvider swaps cleanly", () => {
 
   const hostedProvider: LlmProvider = new OpenAiCompatibleProvider({
     baseUrl: "https://hosted.example",
-    apiKey: "hosted-api-key",
     model: "hosted-flash-free",
     fetch: async () =>
       new Response(
         JSON.stringify({
-          choices: [{ message: { content: '{"title":"Dawn Run","year":2026}' } }],
+          choices: [
+            { message: { content: '{"title":"Dawn Run","year":2026}' } },
+          ],
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -148,7 +295,7 @@ describe("LlmProvider swaps cleanly", () => {
   });
 
   it("both providers drive the same interface consumer", async () => {
-    expect(await scriptVia(hostedProvider)).toEqual({
+    expect(await scriptVia(hostedProvider, "hosted-api-key")).toEqual({
       title: "Dawn Run",
       year: 2026,
     });

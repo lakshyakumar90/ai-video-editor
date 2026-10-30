@@ -7,7 +7,10 @@ import {
 } from "./llm-provider.js";
 import { FakeLlmProvider } from "./fake-llm-provider.js";
 import { OpenCodeProvider } from "./opencode-llm-provider.js";
-import { OpenAiCompatibleProvider } from "./hosted-llm-provider.js";
+import {
+  OPENAI_COMPATIBLE_PRESETS,
+  OpenAiCompatibleProvider,
+} from "./hosted-llm-provider.js";
 
 /**
  * LLM provider registry (Phase 5).
@@ -120,19 +123,19 @@ export const llmProviders: Map<LlmProviderName, LlmProviderDescriptor> =
       {
         name: "hosted-openai",
         description:
-          "Hosted OpenAI-compatible chat completions (bring-your-own-key; needs LLM_HOSTED_BASE_URL/API_KEY/MODEL)",
+          "Hosted OpenAI-compatible chat completions (bring-your-own-key; needs LLM_HOSTED_BASE_URL and LLM_HOSTED_MODEL)",
         deployment: "hosted",
-        capabilities: SUPPORTED_LLM_CAPABILITIES,
+        capabilities:
+          OPENAI_COMPATIBLE_PRESETS["openai-compatible"].capabilities,
         create: () => {
           const baseUrl = process.env.LLM_HOSTED_BASE_URL ?? "";
-          const apiKey = process.env.LLM_HOSTED_API_KEY ?? "";
           const model = process.env.LLM_HOSTED_MODEL ?? "";
-          if (baseUrl === "" || apiKey === "" || model === "") {
+          if (baseUrl === "" || model === "") {
             throw new ProviderResolutionError(
-              'provider "hosted-openai" needs LLM_HOSTED_BASE_URL, LLM_HOSTED_API_KEY and LLM_HOSTED_MODEL',
+              'provider "hosted-openai" needs LLM_HOSTED_BASE_URL and LLM_HOSTED_MODEL',
             );
           }
-          return new OpenAiCompatibleProvider({ baseUrl, apiKey, model });
+          return new OpenAiCompatibleProvider({ baseUrl, model });
         },
       },
     ],
