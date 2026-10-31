@@ -23,7 +23,7 @@ The fake is a wiring test, not a quality baseline: it returns a fixed script, a 
 - Pixabay alone with the other adapters fake: rendered a valid preview from cached/downloaded portrait stock.
 - Docker Whisper alone with the other adapters fake: rendered a valid preview and generated timestamped words from each narration audio file.
 - Pixabay plus Docker Whisper in one local integration render: rendered successfully as well.
-- OpenCode planning could not run because the configured local OpenCode server was not listening on `127.0.0.1:4096`.
+- OpenCode planning after starting the configured local server: rendered a valid preview; planning took about 46 seconds.
 - OpenAI TTS was attempted separately and returned `no API key is configured for openai-tts`; no user's key is present in the local key vault for this provider.
 
-To enable the remaining real-provider runs, start the local OpenCode server and save an OpenAI TTS key for the authenticated user. The pipeline and adapter selection are already wired; the failures above are missing local services/credentials, not fake-mode failures.
+To enable the real TTS run, save an OpenAI TTS key for the authenticated user. The local OpenCode server is running for the remaining provider checks.
