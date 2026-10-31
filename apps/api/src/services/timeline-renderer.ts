@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   timelineSchema,
   type Asset,
@@ -509,6 +510,7 @@ function resolveAsset(
 ): string {
   const selected =
     quality === "preview" ? (asset.proxyPath ?? asset.src) : asset.src;
+  if (selected.startsWith("file:")) return fileURLToPath(selected);
   return path.isAbsolute(selected) ? selected : path.resolve(baseDir, selected);
 }
 async function hashClip(

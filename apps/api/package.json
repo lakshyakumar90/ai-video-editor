@@ -13,6 +13,7 @@
     "llm:scene-plan": "tsx scripts/generate-scene-plan.ts",
     "media:providers": "tsx scripts/test-media-providers.ts",
     "media:scene": "tsx scripts/generate-scene-media.ts",
+    "generate": "tsx scripts/generate.ts",
     "media:music": "tsx scripts/create-music-library.ts"
   },
   "keywords": [],

@@ -148,17 +148,18 @@ export class FakeStockProvider implements StockProvider {
     query: string;
     broaden?: boolean;
   }): Promise<StockCandidate[]> {
-    return [
-      {
-        id: "fixture-sample-clip",
-        url: "fixture://sample-clip",
-        description: input.query,
-        duration: 4,
-        width: 1920,
-        height: 1080,
-        score: 1,
-      },
-    ];
+    return Array.from({ length: 10 }, (_, index) => ({
+      id:
+        index === 0
+          ? "fixture-sample-clip"
+          : `fixture-sample-clip-${index + 1}`,
+      url: "fixture://sample-clip",
+      description: input.query,
+      duration: 4,
+      width: 1920,
+      height: 1080,
+      score: 1 - index / 100,
+    }));
   }
 
   async download(input: {

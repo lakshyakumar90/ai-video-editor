@@ -44,6 +44,35 @@ export class FakeLlmProvider extends LlmProviderBase {
     const plan = schema.safeParse(fakeSceneScript);
     if (plan.success) return plan.data;
 
+    // The deterministic footage-edit fake chooses one valid opening range
+    // from the asset metadata embedded in the routing prompt.
+    if (prompt.includes("Choose useful source ranges")) {
+      const encodedAssets = prompt.match(/Assets: (\[[\s\S]*\])$/)?.[1];
+      if (encodedAssets) {
+        const assets = JSON.parse(encodedAssets) as Array<{
+          id?: string;
+          kind?: string;
+          duration?: number;
+        }>;
+        const source = assets.find(
+          (asset) => asset.kind === "video" && asset.id && asset.duration,
+        );
+        if (source?.id && source.duration) {
+          const cuts = schema.safeParse({
+            cuts: [
+              {
+                assetId: source.id,
+                sourceIn: 0,
+                duration: Math.min(source.duration, 4),
+                reason: "deterministic fake edit",
+              },
+            ],
+          });
+          if (cuts.success) return cuts.data;
+        }
+      }
+    }
+
     // The CLI and API use the response envelope, while lower-level scene
     // planning callers may validate the scene array directly.
     return schema.parse({ scenes: fakeSceneScript });
