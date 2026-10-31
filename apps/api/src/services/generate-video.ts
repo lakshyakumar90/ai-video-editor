@@ -444,12 +444,14 @@ export async function editFromFootage(input: {
 }> {
   const timings: StepTimings = {};
   const plan = await measured("planScript", timings, async () => {
+    report(input.onProgress, "planScript", 0);
     const result = await generateJsonForTask({
       task: "edit-agent",
       userId: input.userId,
       prompt: `Choose useful source ranges from these ingested assets for a short video. Only use provided asset IDs and valid ranges.\nInstruction: ${input.instruction}\nAssets: ${JSON.stringify(input.assets.map((asset) => ({ id: asset.id, kind: asset.kind, duration: asset.duration, transcript: asset.transcript?.text, sceneChanges: asset.sceneChanges, frames: asset.frameDescriptions })))}`,
       schema: footagePlanSchema,
     });
+    report(input.onProgress, "planScript", 100);
     return result.cuts;
   });
   const assetsById = new Map(input.assets.map((asset) => [asset.id, asset]));
@@ -492,33 +494,44 @@ export async function editFromFootage(input: {
       : ratio === "16:9"
         ? [1920, 1080]
         : [1080, 1080];
-  const timeline = timelineSchema.parse({
-    schemaVersion: 2,
-    project: {
-      title: input.instruction.slice(0, 80),
-      aspectRatio: ratio,
-      fps: 30,
-      resolution: { width, height },
-      mode: "footage-to-edit",
-    },
-    assets: input.assets,
-    tracks: [
-      { id: "footage-track", kind: "video", muted: false, clips: videoClips },
-      {
-        id: "edit-captions",
-        kind: "captions",
-        muted: false,
-        clips: audioClips,
+  const timeline = await measured("assembleTimeline", timings, async () => {
+    report(input.onProgress, "assembleTimeline", 0);
+    const value = timelineSchema.parse({
+      schemaVersion: 2,
+      project: {
+        title: input.instruction.slice(0, 80),
+        aspectRatio: ratio,
+        fps: 30,
+        resolution: { width, height },
+        mode: "footage-to-edit",
       },
-    ],
+      assets: input.assets,
+      tracks: [
+        { id: "footage-track", kind: "video", muted: false, clips: videoClips },
+        {
+          id: "edit-captions",
+          kind: "captions",
+          muted: false,
+          clips: audioClips,
+        },
+      ],
+    });
+    report(input.onProgress, "assembleTimeline", 100);
+    return value;
   });
   const videoPath = path.resolve(
     input.outputPath ??
       path.join(env.UPLOAD_DIR, "generated", `${randomUUID()}.mp4`),
   );
   await mkdir(path.dirname(videoPath), { recursive: true });
-  const render = await measured("renderTimeline", timings, () =>
-    renderTimeline(timeline, { outputPath: videoPath, quality: "final" }),
-  );
+  const render = await measured("renderTimeline", timings, async () => {
+    report(input.onProgress, "renderTimeline", 0);
+    const result = await renderTimeline(timeline, {
+      outputPath: videoPath,
+      quality: "final",
+    });
+    report(input.onProgress, "renderTimeline", 100);
+    return result;
+  });
   return { timeline, videoPath, render, timings };
 }
