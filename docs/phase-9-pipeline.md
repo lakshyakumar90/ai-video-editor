@@ -8,13 +8,13 @@ The voice, visual download, and caption tasks start together for each scene. Cap
 
 Five distinct prompts were rendered with all providers fake, each to a 270×480 preview MP4 (portrait 9:16) with 3 scenes and a 9.1-second duration. The observed plan/fetch/voice/caption/assemble/render timings were respectively: 6–15 ms, 0.32–0.94 s, 1.1–2.6 s, 2.1–4.0 s, 18–21 ms, and 2.7–3.5 s. Voice/caption timings sum the parallel scene work; render timing is wall time.
 
-| Prompt | What was poor in the fake output |
-| --- | --- |
-| Kyoto bamboo forest morning walk | LLM fake ignored the prompt and returned Tokyo nightlife; sample stock clip does not show bamboo. |
-| Pour-over coffee guide | Tokyo nightlife narration and generic repeated fixture footage do not explain coffee steps. |
-| Community marathon runner profile | No runner visuals, no training progression, and narration remains the same Tokyo script. |
-| Mexico City street-food travel short | Visuals and narration do not match the requested city or food. |
-| Rooftop garden cooling explainer | No garden or urban-heat explanation; fixed Tokyo nightlife plan and repeated fixture clip. |
+| Prompt                               | What was poor in the fake output                                                                  |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Kyoto bamboo forest morning walk     | LLM fake ignored the prompt and returned Tokyo nightlife; sample stock clip does not show bamboo. |
+| Pour-over coffee guide               | Tokyo nightlife narration and generic repeated fixture footage do not explain coffee steps.       |
+| Community marathon runner profile    | No runner visuals, no training progression, and narration remains the same Tokyo script.          |
+| Mexico City street-food travel short | Visuals and narration do not match the requested city or food.                                    |
+| Rooftop garden cooling explainer     | No garden or urban-heat explanation; fixed Tokyo nightlife plan and repeated fixture clip.        |
 
 The fake is a wiring test, not a quality baseline: it returns a fixed script, a sample narration MP3, a sample video clip under distinct fixture IDs, and evenly spaced sample words. Real visual relevance and narration/caption alignment require a live planning provider, actual TTS, and Whisper.
 
